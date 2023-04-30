@@ -1,0 +1,48 @@
+[project]
+name = "stepping"
+version = "0.0.1"
+description = "Incremental View Maintenance for Python backends"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {file = "LICENSE.txt"}
+keywords = ["IVM", "postgres"]
+authors = [
+  {name = "Oliver Russell", email = "ojhrussell@gmail.com"},
+]
+maintainers = [
+  {name = "Oliver Russell", email = "ojhrussell@gmail.com"},
+]
+classifiers = [
+  "Programming Language :: Python",
+]
+
+dependencies = [
+  "immutables>=0.19",
+  "mashumaro>=3.5",
+  "mypy>=1.2.0",
+  "psycopg>=3.1.8",
+  "psycopg-binary>=3.1.8",
+  "psycopg-pool>=3.1.7",
+  "tabulate>=0.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "testing.postgresql>=1.3.0",
+  "pytest>=7.2.2",
+  "autoflake>=2.0.2",
+  "black>=23.1.0",
+  "icdiff>=2.0.6",
+  "isort>=5.12.0",
+  "prettyprinter>=0.18.0",
+  "pydot>=1.4.2",
+  "snakeviz>=2.1.1",
+]
+
+[project.urls]
+# homepage = "https://example.com"
+# documentation = "https://readthedocs.org"
+# repository = "https://github.com/me/spam.git"
+
+[project.scripts]
+# spam-cli = "spam:main_cli"
