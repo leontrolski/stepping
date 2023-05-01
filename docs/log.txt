@@ -1,0 +1,6 @@
+flyctl launch
+flyctl deploy
+flyctl ips list -a stepping-docs
+set A record to @, IPv4
+set AAAA record to @, IPv6
+flyctl certs create -a stepping-docs stepping.site

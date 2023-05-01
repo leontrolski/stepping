@@ -23,6 +23,13 @@ mypy src tests
 
 ## Todos
 
+### Docs
+
+- Serve something somewhere. Probably markdown based. Maybe Pydoc. Maybe fly.io site.
+- Really basic high level diagram.
+- Example.
+- How it works/concepts.
+
 ### Ergonomics
 
 - Think of a nice way to implement nested collections with efficient operations.
@@ -33,9 +40,12 @@ mypy src tests
 
 ### Operator level
 
+- Make `integrate_zset_indexed` handle many indexes.
+- Allow reducing on many things with `group_reduce_flatten`, eg. count and sum.
+- Change `name: str` everywhere to be `provenance: Provenance`
 - Allow for (and test) arbitrary depth grouped nesting and joining in a grouped setting - is this necessary, or can it always just be achieved outside the group?
 - Look at 11.8 "Window aggregates"
-- Change `name: str` everywhere to be `provenance: Provenance`
+- Can `zset.join` of two `ZSetPostgres` just use SQL?
 - Change `transform.finalize` to be like `with freshly_numbered_vertices():` and namespace tables. (There is `reset_vertex_counter(...)` now if that helps).
 - Simplify `haitch`.
 
@@ -48,3 +58,13 @@ mypy src tests
 ## Performance
 
 - Running a pretty basic test (1 million reads, two joins, group by date), stepping's insert time is a lot slower, but querying the integrated data set takes `0.0003s` as opposed to `0.5s`. (Details in `test_profile_cute.py`).
+
+# Upload to Pypi
+
+```bash
+# bump version
+python -m pip install build twine
+python -m build
+twine check dist/*
+twine upload dist/*
+```

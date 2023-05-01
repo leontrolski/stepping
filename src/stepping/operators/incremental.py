@@ -127,32 +127,13 @@ def outer_join(
 
     # Hack to make the run-time types for the following add work
     graph.get_single_vertex(ip4).v = R[ZSet[Pair[T, U | Empty]]].sub(T=t, U=u)  # type: ignore
+    ip4_typed = cast(Graph[A1[ZSet[Pair[T, U]]], A1[ZSet[Pair[T, U | Empty]]]], ip4)
 
-    out = (
-        graph.stack(it1.connect(graph.stack(it2, it3)), iu1.connect(iu2))
-        .connect(
-            graph.stack(
-                it4,
-                j.connect(graph.stack(ip1, ip2)),
-            )
-        )
-        .connect(
-            graph.stack(
-                it5,
-                graph.stack(
-                    left.connect(neg),
-                    ip3,
-                ),
-            )
-        )
-        .connect(
-            graph.stack(
-                add1.connect(empty),
-                cast(Graph[A1[ZSet[Pair[T, U]]], A1[ZSet[Pair[T, U | Empty]]]], ip4),
-            )
-        )
-        .connect(add2)
-    )
+    stack1 = graph.stack(it1.connect(graph.stack(it2, it3)), iu1.connect(iu2))
+    stack2 = graph.stack(it4, j.connect(graph.stack(ip1, ip2)))
+    stack3 = graph.stack(it5, graph.stack(left.connect(neg), ip3))
+    stack4 = graph.stack(add1.connect(empty), ip4_typed)
+    out = stack1.connect(stack2).connect(stack3).connect(stack4).connect(add2)
     return out
 
 

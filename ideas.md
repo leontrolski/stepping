@@ -47,8 +47,11 @@ _Like wot React did for the frontend/terraform does for infrastructure._
 
 _Spell out one of the following:_
 
-- Dashboard-like pages with graphs per day over time.
 - Further expand on the energy industry meter reads example, it's actually a pretty good match.
+- Dashboard-like pages with graphs per day over time.
+- Build system a la Bazel.
+- Compiler.
+- UI.
 - Anything with a comments page, demonstrate what happens if we dump the `<html>` on changes.
 - Realtime interactive page like Google docs.
 - A bank-like thing with money coming in and out?

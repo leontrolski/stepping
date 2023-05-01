@@ -130,6 +130,12 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-node_modules
 *.prof
 .vscode/
+
+# from doks
+node_modules
+# public
+resources
+.netlify
+.hugo_build.lock
