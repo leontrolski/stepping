@@ -12,8 +12,8 @@ description = "Incremental View Maintenance for Python backends."
 ## Open Graph
 images = ["doks.png"]
 ogLocale = "en_US"
-domainTLD = "doks.netlify.app"
-titleHome = "Doks Theme"
+domainTLD = "stepping.site"
+titleHome = "stepping"
 
 ## Twitter Cards
 # twitterSite = "@getdoks"
@@ -22,11 +22,11 @@ titleHome = "Doks Theme"
 ## JSON-LD
 # schemaType = "Person"
 schemaType = "Organization"
-schemaName = "Doks"
-schemaAuthor = "Henk Verlinde"
+schemaName = "stepping"
+schemaAuthor = "Oliver Russell"
 # schemaAuthorTwitter = "https://twitter.com/henkverlinde"
 # schemaAuthorLinkedIn = "https://www.linkedin.com/in/henkverlinde/"
-schemaAuthorGitHub = "https://github.com/h-enk"
+schemaAuthorGitHub = "https://github.com/leontrolski"
 schemaLocale = "en-US"
 schemaLogo = "logo-doks.png"
 schemaLogoWidth = 512
@@ -36,7 +36,7 @@ schemaImageWidth = 1280
 schemaImageHeight = 640
 # schemaTwitter = "https://twitter.com/getdoks"
 # schemaLinkedIn = ""
-schemaGitHub = "https://github.com/h-enk/doks"
+schemaGitHub = "https://github.com/leontrolski/stepping"
 schemaSection = "blog"
 
 ## Sitelinks Search Box
@@ -68,7 +68,7 @@ fillImage = "1270x740 Center" # normalize image size
 footer = "Powered by <a class=\"text-muted\" href=\"https://www.netlify.com/\">Netlify</a>, <a class=\"text-muted\" href=\"https://gohugo.io/\">Hugo</a>, and <a class=\"text-muted\" href=\"https://getdoks.org/\">Doks</a>"
 
 # Feed
-copyRight = "Copyright (c) 2020-2021 Henk Verlinde"
+copyRight = "Copyright (c) 2020-2021 Oliver Russell"
 
 # Alert
 alert = false
@@ -93,10 +93,10 @@ lastMod = false
   lazySizes = true
   clipBoard = true
   instantPage = true
-  flexSearch = true
+  flexSearch = false
   searchSectionsShow = []
   searchSectionsIndex = []
-  darkMode = true
+  darkMode = false
   bootStrapJs = true
   breadCrumb = false
   highLight = true
