@@ -2,6 +2,8 @@
 
 Based on the paper: [DBSP: Automatic Incremental View Maintenance for Rich Query Languages](https://github.com/vmware/database-stream-processor/blob/e6cdbb538bbce8adb90018ff75f8ae8251b3e206/doc/theory/main.pdf).
 
+# [📚 Documentation 📚](https://stepping.site)
+
 ## Installation
 
 ```bash
@@ -19,16 +21,7 @@ pytest
 mypy src tests
 ```
 
-# Internals
-
 ## Todos
-
-### Docs
-
-- Serve something somewhere. Probably markdown based. Maybe Pydoc. Maybe fly.io site.
-- Really basic high level diagram.
-- Example.
-- How it works/concepts.
 
 ### Ergonomics
 
@@ -55,11 +48,8 @@ mypy src tests
 - Add a `maybe` function that allows for `pick_index(Left, maybe(left.a).foo)`.
 - `s/[T, K]/[K, T]/` everywhere.
 
-## Performance
 
-- Running a pretty basic test (1 million reads, two joins, group by date), stepping's insert time is a lot slower, but querying the integrated data set takes `0.0003s` as opposed to `0.5s`. (Details in `test_profile_cute.py`).
-
-# Upload to Pypi
+# How to upload to Pypi
 
 ```bash
 # bump version

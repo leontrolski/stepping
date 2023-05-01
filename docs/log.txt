@@ -9,5 +9,4 @@ cd docs/doks
 npm install
 npm run start
 npm run build && rm -rf ../public &&  mv public ../
-cd ..
-flyctl deploy
+cd ..; flyctl deploy; cd -

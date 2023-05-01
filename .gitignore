@@ -135,7 +135,7 @@ dmypy.json
 
 # from doks
 node_modules
-# public
+public
 resources
 .netlify
 .hugo_build.lock

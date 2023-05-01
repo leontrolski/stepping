@@ -1,4 +1,4 @@
-baseurl = "https://doks.netlify.app/"
+baseurl = "https://stepping.site/"
 canonifyURLs = false
 disableAliases = true
 disableHugoGeneratorInject = true
