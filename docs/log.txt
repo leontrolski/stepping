@@ -4,3 +4,8 @@ flyctl ips list -a stepping-docs
 set A record to @, IPv4
 set AAAA record to @, IPv6
 flyctl certs create -a stepping-docs stepping.site
+
+cd docs/doks
+npm install
+npm run start
+npm run build && rm -rf ../public &&  mv public ../
