@@ -35,7 +35,7 @@ mypy src tests
 
 - Make `integrate_zset_indexed` handle many indexes.
 - Allow reducing on many things with `group_reduce_flatten`, eg. count and sum.
-- Change `name: str` everywhere to be `provenance: Provenance`
+- Change `name: str` everywhere to be `provenance: Provenance`, use this to put boxes round pngs.
 - Allow for (and test) arbitrary depth grouped nesting and joining in a grouped setting - is this necessary, or can it always just be achieved outside the group?
 - Look at 11.8 "Window aggregates"
 - Can `zset.join` of two `ZSetPostgres` just use SQL?

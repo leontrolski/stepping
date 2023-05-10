@@ -1,5 +1,5 @@
 ---
-title: "Running in production"
+title: "Using postgres"
 description: ""
 lead: ""
 date: 2020-10-06T08:48:57+00:00
@@ -9,8 +9,8 @@ images: []
 menu:
   docs:
     parent: "getting-started"
-weight: 106
+weight: 104
 toc: true
 ---
 
-_How to set up databases etc._
+_Run through the operators._

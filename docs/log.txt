@@ -8,5 +8,5 @@ flyctl certs create -a stepping-docs stepping.site
 cd docs/doks
 npm install
 npm run start
-npm run build && rm -rf ../public &&  mv public ../
+npm run build
 cd ..; flyctl deploy; cd -

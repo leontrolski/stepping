@@ -6,9 +6,12 @@
 Consider the interview-question version of the Python backend you're currently building. It probably looks along the lines of:
 
 ```
-data/input.json
+data/
+    input-2012-01-01.json
+    input-2012-01-02.json
+    ...
 
-def process_data(input) -> Output:
+def process_data(input: Input) -> Output:
     intermediary_value = f(input)
     ...                = g(intermediary_value)
     ...

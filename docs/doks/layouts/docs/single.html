@@ -24,6 +24,7 @@
 					</ol>
 				</nav>
 			{{ end }}
+			{{ partial "main/docs-navigation.html" . }}
 			<h1>{{ .Title }}</h1>
 			<p class="lead">{{ .Params.lead | safeHTML }}</p>
 			{{ if ne .Params.toc false -}}
