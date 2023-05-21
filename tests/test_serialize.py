@@ -67,7 +67,7 @@ foo = Foo(
 )
 
 
-@pytest.mark.parametrize(  # type: ignore[misc]
+@pytest.mark.parametrize(
     ["t", "n"],
     [
         (int, 3),

@@ -10,3 +10,6 @@ npm install
 npm run start
 npm run build
 cd ..; flyctl deploy; cd -
+
+cd docs
+python ../scripts/md.py ../ $(find -L ../docs-md -name '**.md')

@@ -38,7 +38,7 @@ Using `stepping` involves a similar shift, but on the backend, in this case from
 
 The Python backend you're currently building probably has a really simple "interview-question" version along the lines of:
 
-```python [references:foo]
+```python
 test-data/
     external-api-call-2012-01-01.json
     user-input-2012-01-02.json

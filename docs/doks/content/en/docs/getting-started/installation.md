@@ -21,6 +21,11 @@ pip install stepping
 
 If you want to run the examples with `pytest`, I recommend using [testing.postgresql](https://github.com/tk0miya/testing.postgresql#usage) and setting up fixtures in your `conftest.py` similar to:
 
+```python [/docs/snippets/test_setup.py::fixtures]
+def foo() -> int:
+    return 420
+```
+
 ```python
 @pytest.fixture(scope="session")
 def db() -> Iterator[str]:
