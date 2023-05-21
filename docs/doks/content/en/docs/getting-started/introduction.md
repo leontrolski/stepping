@@ -22,7 +22,7 @@ In ye olde JQuery days, you would:
 
 This often turned into a spaghetti mess, as a change of input might need to update many other components and you had competing callbacks happening asynchronously. 
 
-React (in theory at least) solves this by allowing you to do:
+React (in theory at least) solved this by allowing you to do:
 
 - Render the page as `f(state)`
 - `<input onInput=mutateState(...) >`
@@ -30,13 +30,13 @@ React (in theory at least) solves this by allowing you to do:
 
 Deciding which bits of the page to twiddle is [taken care of](https://leontrolski.github.io/33-line-react.html) by React. 
 
-Using `stepping` involves a similar shift but on the backend, in this case from twiddling with cached data in the database, to declaratively describing `outputs = f(inputs)` and letting `stepping` handle efficient updates. 
+Using `stepping` involves a similar shift, but on the backend, in this case from twiddling with cached data in the database to declaratively describing `outputs = f(inputs)` and letting `stepping` handle efficient updates. 
 
 ![Diagram](/images/stepping-frontpage.svg)
 
 ## Why?
 
-The Python backend you're currently building probably has a really simple "interview-question" version _(where you ignore storing/serving the data)_ along the lines of:
+The Python backend you're currently building probably has a really simple "interview-question" version along the lines of:
 
 ```python [references:foo]
 test-data/
