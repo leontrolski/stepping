@@ -1,27 +1,10 @@
----
-title: "Installation"
-description: ""
-lead: ""
-date: 2020-10-06T08:48:57+00:00
-lastmod: 2020-10-06T08:48:57+00:00
-draft: false
-images: []
-menu:
-  docs:
-    parent: "getting-started"
-weight: 102
-toc: true
----
+import pytest
+from typing import Iterator
+import testing.postgresql
+import psycopg
 
-Installation should be as simple as:
 
-```bash
-pip install stepping
-```
-
-If you want to run the examples with `pytest`, I recommend using [testing.postgresql](https://github.com/tk0miya/testing.postgresql#usage) and setting up fixtures in your `conftest.py` similar to:
-
-```python [/docs/snippets/conftest.py::fixtures]
+# reference: fixtures
 @pytest.fixture(scope="session")
 def db() -> Iterator[str]:
     with testing.postgresql.Postgresql(port=8421) as postgresql:
@@ -51,4 +34,4 @@ def clean_tables(conn: psycopg.Connection) -> None:
     """
     for (sequence,) in conn.execute(qry):
         conn.execute(f"ALTER SEQUENCE {sequence} RESTART WITH 1")
-```
+# /reference: fixtures

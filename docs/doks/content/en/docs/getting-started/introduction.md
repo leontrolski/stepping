@@ -28,7 +28,7 @@ React (in theory at least) solved this by allowing you to do:
 - `<input onInput=mutateState(...) >`
 - Re-render the page by recomputing `f(state)`
 
-Deciding which bits of the page to twiddle is [taken care of](https://leontrolski.github.io/33-line-react.html) by React. 
+**Deciding which bits of the page to twiddle is [taken care of](https://leontrolski.github.io/33-line-react.html) by React**. 
 
 Using `stepping` involves a similar shift, but on the backend, in this case from twiddling with cached data in the database to declaratively describing `outputs = f(inputs)` and letting `stepping` handle efficient updates. 
 

@@ -12,13 +12,13 @@ from stepping.zset import postgres
 install_extras(warn_on_error=False)
 
 
-@pytest.fixture(autouse=True) 
+@pytest.fixture(autouse=True)
 def reset_operator_i() -> Iterator[None]:
     yield
     operators.reset_vertex_counter()
 
 
-@pytest.fixture(scope="session")  
+@pytest.fixture(scope="session")
 def dummy_config() -> Iterator[None]:
     # class scoped monkeypatch
     mpatch = MonkeyPatch()
@@ -33,13 +33,13 @@ def dummy_config() -> Iterator[None]:
     mpatch.undo()
 
 
-@pytest.fixture(scope="session")  
+@pytest.fixture(scope="session")
 def db(dummy_config: None) -> Iterator[str]:
     with testing.postgresql.Postgresql(port=8421) as postgresql:
         yield postgresql.url()
 
 
-@pytest.fixture  
+@pytest.fixture
 def conn(db: None) -> Iterator[postgres.Conn]:
     with postgres.connection() as conn:
         yield conn

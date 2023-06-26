@@ -1,5 +1,5 @@
 ---
-title: "Incremental View Maintenance"
+title: "Nutshell"
 description: ""
 lead: ""
 date: 2020-10-06T08:48:57+00:00
@@ -13,4 +13,8 @@ weight: 501
 toc: true
 ---
 
-_Differentiating etc._
+Let's drill into the main concepts of incremental view maintenance:
+
+- Graph of ...
+- ZSets
+- Integrating/Differentiating

@@ -1,6 +1,6 @@
 import pytest
+import psycopg
 
-# reference: fixtures
-def foo() -> int:
-    return 420
-# /reference: fixtures
+def test_foo(conn: psycopg.Connection) -> int:
+    rows = conn.execute("SELECT 1")
+    assert list(rows) == [(1, )]

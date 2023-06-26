@@ -76,6 +76,14 @@ def _make_name() -> str:
     return f"_N{i}"
 
 
+def add_zset(t: type[T], ) -> Graph[A2[ZSet[T], ZSet[T]], A1[ZSet[T]]]:
+    return add(R[ZSet[T]].sub(T=t))
+
+
+def delay_zset(t: type[T]) -> Graph[A1[ZSet[T]], A1[ZSet[T]]]:
+    return delay(R[ZSet[T]].sub(T=t))
+
+
 def differentiate_zset(t: type[T]) -> Graph[A1[ZSet[T]], A1[ZSet[T]]]:
     return differentiate(R[ZSet[T]].sub(T=t))
 
@@ -92,6 +100,14 @@ def integrate_zset_indexed(
     t: type[T], index: Index[T, K]
 ) -> Graph[A1[ZSet[T]], A1[ZSet[T]]]:
     return integrate(R[Annotated[ZSet[T], index]].sub(T=t, K=index.k))
+
+
+def neg_zset(t: type[T]) -> Graph[A1[ZSet[T]], A1[ZSet[T]]]:
+    return neg(R[ZSet[T]].sub(T=t))
+
+
+# def sum_zset(t: type[T], v: TReducable, pick_number: Callable[[T], TReducable]) -> Graph[A1[ZSet[T]], A1[ZSet[TReducable]]]:
+#     return sum(R[ZSet[T]].sub(T=t), R[TReducable].sub(TReducable=v), pick_number)
 
 
 def join_flat(
