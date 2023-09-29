@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, fields, is_dataclass
-from typing import Any, Callable, Generic, Iterator, get_args
+from typing import Any, Callable, Iterator, get_args
 
+from pydantic import PlainSerializer, PlainValidator
 from tabulate import tabulate
 
 from stepping import serialize
@@ -13,19 +13,21 @@ from stepping.types import (
     MATCH_ALL,
     Index,
     Indexable,
+    K,
     MatchAll,
+    Serializable,
     Serialized,
     T,
     ZSet,
-    choose,
+    ZSetBodge,
 )
 
 
 @dataclass
-class ZSetPython(Generic[T]):
+class ZSetPython(ZSetBodge[T]):
     indexes: tuple[Index[T, Indexable], ...]
     _data: DefaultDict[T, int]
-    _data_indexes: list[SortedSet[T, Indexable]]  # type: ignore
+    _data_indexes: list[SortedSet[T, Indexable]]  # type: ignore[type-var]
 
     def __repr__(self) -> str:
         indexes_str = ", ".join(
@@ -51,7 +53,7 @@ class ZSetPython(Generic[T]):
                     table = _table
                 except Exception:
                     pass
-        return repr_header + tabulate(table, headers, tablefmt="rounded_outline")  # type: ignore
+        return repr_header + tabulate(table, headers, tablefmt="fancy_grid")  # type: ignore
 
     def __init__(
         self,
@@ -73,7 +75,7 @@ class ZSetPython(Generic[T]):
                 for v, count in data:
                     self._data[v] += count
         self.indexes = indexes
-        # TODO: fix typing here - s/T/TSerializable
+        # This ignore is kinda OK - if we've manage to define the index, it should be Serializable
         self._data_indexes = [SortedSet(i) for i in indexes]  # type: ignore[type-var]
 
     def __eq__(self, other: Any) -> bool:
@@ -131,42 +133,36 @@ class ZSetPython(Generic[T]):
 
         return out
 
-    def iter(self) -> Iterator[tuple[T, int]]:
-        for v, count in self._data.items():
-            yield v, count
+    def iter(
+        self, match: frozenset[T] | MatchAll = MATCH_ALL
+    ) -> Iterator[tuple[T, int]]:
+        if isinstance(match, MatchAll):
+            for v, count in self._data.items():
+                yield v, count
+        else:
+            for m in match:
+                if m in self._data:
+                    yield m, self._data[m]
 
-    def iter_by_index_generic(
+    def _iter_by_index(
         self,
-        index: Index[T, Indexable],
-        match_keys: tuple[Indexable, ...] | MatchAll = MATCH_ALL,
-    ) -> Iterator[tuple[Indexable, T, int]]:
+        index: Index[T, K],
+        match_keys: frozenset[K] | MatchAll = MATCH_ALL,
+    ) -> Iterator[tuple[K, T, int]]:
         if index not in self.indexes:
             raise RuntimeError(f"ZSet does not have index: {index}")
+        if not match_keys:
+            return iter([])
         data_index = next(d for d in self._data_indexes if d.index == index)
         return (
-            (choose(index, v), v, self.get_count(v))
+            (index.f(v), v, self.get_count(v))
             for v in data_index.iter_matching(match_keys)
         )
 
     # SerializableObject methods
 
-    def identity(self) -> str:
-        return ",".join(
-            sorted(
-                json.dumps(
-                    [serialize.serialize(value), count],  # type: ignore[arg-type]
-                    separators=(",", ":"),
-                    sort_keys=True,
-                )
-                for value, count in self.iter()
-            )
-        )
-
-    def serialize(self) -> Serialized:
-        return [
-            [serialize.serialize(value), count]  # type: ignore[arg-type]
-            for value, count in self.iter()
-        ]
+    def serialize(self: ZSet[Serializable]) -> Serialized:
+        return [[serialize.serialize(value), count] for value, count in self.iter()]
 
     @classmethod
     def make_deserialize(cls) -> Callable[[Serialized], ZSetPython[T]]:
@@ -187,3 +183,18 @@ class ZSetPython(Generic[T]):
             return ZSetPython[T](iter(value_counts))
 
         return inner
+
+
+def annotate_zset(t: type[T]) -> tuple[PlainSerializer, PlainValidator]:
+    # Use when serializing nested ZSetPythons like:
+    #
+    #     class Outer:
+    #          inner_z: Annotated[ZSetPython[str], *st.annotate_zset(str)]
+    #
+    s = PlainSerializer(lambda x: x.serialize(), return_type=list)
+    d = PlainValidator(
+        lambda x: x
+        if isinstance(x, ZSetPython)
+        else serialize.deserialize(ZSetPython[t], x)  # type: ignore[valid-type]
+    )
+    return s, d

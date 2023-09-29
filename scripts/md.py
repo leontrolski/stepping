@@ -19,11 +19,11 @@ def get_code(p: Path, reference: str) -> str:
             lines.append(line)
     if not lines:
         raise RuntimeError(f"Couldn't see any: '# reference: {reference}'")
-    return dedent("".join(lines))
+    return dedent("".join(lines)).strip() + "\n"
 
 
 def line_to_reference(line: str) -> tuple[Path, str] | None:
-    if line.startswith("```") and"[" in line and "]" in line:
+    if line.startswith("```python") and "[" in line and "]" in line:
         _, right = line.split("[")
         centre, _ = right.split("]")
         code_path_str, reference = centre.split("::")
@@ -85,6 +85,7 @@ if __name__ == "__main__":
         all_paths.add(k)
         all_paths.add(v)
     hashes = {p: "" for p in all_paths}
+
 
     while True:
         for p in all_paths:

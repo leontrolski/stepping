@@ -6,113 +6,142 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from stepping import config
 from stepping.types import Data, SerializableObject, ZSet, pick_identity, pick_index
-from stepping.zset import iter_by_index_grouped, postgres
+from stepping.zset import functions
 from stepping.zset.python import ZSetPython
+from stepping.zset.sql import generic, postgres
 
 
-def dump_schema() -> str:
+def dump_schema(conn: generic.ConnPostgres) -> str:
+    i = conn.info
+    db_url = f"postgres://{i.user}@{i.host}:{i.port}/{i.dbname}"
     return subprocess.check_output(
-        f"pg_dump {config.get_config().DB_URL} --schema-only", shell=True
+        f"pg_dump {db_url} --schema-only", shell=True
     ).decode()
 
 
-def test_create_table(conn: postgres.Conn) -> None:
+def test_create_table(postgres_conn: generic.ConnPostgres) -> None:
+    cur = postgres_conn.cursor()
     ix = pick_identity(int)
-    z = postgres.ZSetPostgres[int](conn, int, postgres.Table("foo"), (ix,))
-    with conn.transaction():
-        postgres.create_data_table(z)
+    z = postgres.ZSetPostgres[int](cur, int, generic.Table("foo"), (ix,))
 
 
-@dataclass(frozen=True)
 class Animal(Data):
-    def identity(self) -> str:
-        return self.name
-
     name: str
     sound: str
     age: int
     created: datetime
 
 
-def test_typing(conn: postgres.Conn) -> None:
+def test_typing(postgres_conn: generic.ConnPostgres) -> None:
+    cur = postgres_conn.cursor()
     animal: SerializableObject = Animal(
-        "fido", "woof", 38, datetime(2022, 1, 1, tzinfo=timezone.utc)
+        name="fido",
+        sound="woof",
+        age=38,
+        created=datetime(2022, 1, 1, tzinfo=timezone.utc),
     )
-    z: ZSet[int] = postgres.ZSetPostgres[int](conn, int, postgres.Table("foo"), ())
+    z: ZSet[int] = postgres.ZSetPostgres[int](cur, int, generic.Table("foo"), ())
 
 
-def test_write_simple_int(conn: postgres.Conn) -> None:
-    z = postgres.ZSetPostgres(conn, int, postgres.Table("foo"), ())
-    postgres.create_data_table(z)
+def test_write_simple_int(postgres_conn: generic.ConnPostgres) -> None:
+    cur = postgres_conn.cursor()
+    z = postgres.ZSetPostgres(cur, int, generic.Table("foo"), ())
+    z.create_data_table()
+    changes = ZSetPython({42: 1, 56: 2, 78: -1})
+    z += changes
+
+    actual = list(z.iter(frozenset((42, 78))))
+    assert actual == [(42, 1), (78, -1)]
+
+    z.flush_changes()
+    assert z.to_python() == changes
+
+    actual = list(z.iter(frozenset((42, 78))))
+    assert actual == [(42, 1), (78, -1)]
+
+
+def test_write_simple_int_with_index(postgres_conn: generic.ConnPostgres) -> None:
+    cur = postgres_conn.cursor()
+    z = postgres.ZSetPostgres(cur, int, generic.Table("foo"), (pick_identity(int),))
+    z.create_data_table()
     changes = ZSetPython({42: 1, 56: 2})
     z += changes
     z.flush_changes()
     assert z.to_python() == changes
 
-
-def test_write_simple_int_with_index(conn: postgres.Conn) -> None:
-    z = postgres.ZSetPostgres(conn, int, postgres.Table("foo"), (pick_identity(int),))
-    postgres.create_data_table(z)
-    changes = ZSetPython({42: 1, 56: 2})
-    z += changes
-    z.flush_changes()
-    assert z.to_python() == changes
-
-    conn.commit()
-    schema = dump_schema()
+    postgres_conn.commit()
+    schema = dump_schema(postgres_conn)
     ix_str = (
         "CREATE INDEX ix__foo__identity ON public.foo USING btree (((data)::integer))"
     )
     assert ix_str in schema
 
 
-def test_write_simple_date(conn: postgres.Conn) -> None:
-    z = postgres.ZSetPostgres(conn, date, postgres.Table("foo"), ())
-    postgres.create_data_table(z)
+def test_write_simple_date(postgres_conn: generic.ConnPostgres) -> None:
+    cur = postgres_conn.cursor()
+    z = postgres.ZSetPostgres(cur, date, generic.Table("foo"), ())
+    z.create_data_table()
     changes = ZSetPython({date(2021, 1, 3): 1, date(2021, 1, 4): -2})
     z += changes
     z.flush_changes()
     assert z.to_python() == changes
 
 
-def test_write_simple_date_with_index(conn: postgres.Conn) -> None:
+def test_write_simple_date_with_index(postgres_conn: generic.ConnPostgres) -> None:
+    cur = postgres_conn.cursor()
     z = postgres.ZSetPostgres(
-        conn,
+        cur,
         date,
-        postgres.Table("foo"),
+        generic.Table("foo"),
         (pick_identity(date),),
     )
-    postgres.create_data_table(z)
+    z.create_data_table()
     changes = ZSetPython({date(2021, 1, 3): 1, date(2021, 1, 4): -2})
     z += changes
     z.flush_changes()
     assert z.to_python() == changes
 
-    conn.commit()
-    schema = dump_schema()
+    postgres_conn.commit()
+    schema = dump_schema(postgres_conn)
     ix_str = "CREATE INDEX ix__foo__identity ON public.foo USING btree (((data)::text))"
     assert ix_str in schema
 
 
-def test_write_complex(conn: postgres.Conn) -> None:
-    z = postgres.ZSetPostgres(conn, Animal, postgres.Table("foo"), ())
-    postgres.create_data_table(z)
+def test_write_complex(postgres_conn: generic.ConnPostgres) -> None:
+    cur = postgres_conn.cursor()
+    z = postgres.ZSetPostgres(cur, Animal, generic.Table("foo"), ())
+    z.create_data_table()
 
-    animal = Animal("fido", "woof", 38, datetime(2022, 1, 1, tzinfo=timezone.utc))
+    animal = Animal(
+        name="fido",
+        sound="woof",
+        age=38,
+        created=datetime(2022, 1, 1, tzinfo=timezone.utc),
+    )
     changes = ZSetPython({animal: 2})
     z += changes
     z.flush_changes()
     assert z.to_python() == changes
 
 
-def test_write_complex_update(conn: postgres.Conn) -> None:
-    z = postgres.ZSetPostgres(conn, Animal, postgres.Table("foo"), ())
-    postgres.create_data_table(z)
+def test_write_complex_update(postgres_conn: generic.ConnPostgres) -> None:
+    cur = postgres_conn.cursor()
+    z = postgres.ZSetPostgres(cur, Animal, generic.Table("foo"), ())
+    z.create_data_table()
 
-    animal = Animal("fido", "woof", 38, datetime(2022, 1, 1, tzinfo=timezone.utc))
-    animal_new = Animal("fido", "woofff", 38, datetime(2022, 6, 1, tzinfo=timezone.utc))
+    animal = Animal(
+        name="fido",
+        sound="woof",
+        age=38,
+        created=datetime(2022, 1, 1, tzinfo=timezone.utc),
+    )
+    animal_new = Animal(
+        name="fido",
+        sound="woofff",
+        age=38,
+        created=datetime(2022, 6, 1, tzinfo=timezone.utc),
+    )
 
     changes = ZSetPython({animal: 1})
     z += changes
@@ -127,31 +156,10 @@ def test_write_complex_update(conn: postgres.Conn) -> None:
     assert z.to_python() == expected
 
 
-def test_write_complex_update_error(conn: postgres.Conn) -> None:
-    z = postgres.ZSetPostgres(conn, Animal, postgres.Table("foo"), ())
-    postgres.create_data_table(z)
-
-    animal = Animal("fido", "woof", 38, datetime(2022, 1, 1, tzinfo=timezone.utc))
-    animal_new = Animal("fido", "woofff", 38, datetime(2022, 6, 1, tzinfo=timezone.utc))
-
-    changes = ZSetPython({animal: 1})
-    z += changes
-    z.flush_changes()
-    assert z.to_python() == changes
-
-    changes = ZSetPython({animal: -1, animal_new: 2})
-    z += changes
-
-    with pytest.raises(RuntimeError):
-        z.flush_changes()
-
-
-@dataclass(frozen=True)
 class Bar(Data):
     bingo: str
 
 
-@dataclass(frozen=True)
 class Foo(Data):
     name: str | None
     created: date
@@ -159,7 +167,8 @@ class Foo(Data):
     parent: Bar
 
 
-def test_schema_made_and_used(conn: postgres.Conn) -> None:
+def test_schema_made_and_used(postgres_conn: generic.ConnPostgres) -> None:
+    cur = postgres_conn.cursor()
     ix_namely = pick_index(Foo, lambda f: f.name)
     ix_name_and_age = pick_index(Foo, lambda f: (f.name, f.age))
     ix_parent_bingo = pick_index(
@@ -168,21 +177,24 @@ def test_schema_made_and_used(conn: postgres.Conn) -> None:
     ix_created = pick_index(Foo, lambda f: f.created)
 
     z = postgres.ZSetPostgres(
-        conn,
+        cur,
         Foo,
-        postgres.Table("foo"),
+        generic.Table("foo"),
         (ix_namely, ix_name_and_age, ix_parent_bingo, ix_created),
     )
-    postgres.create_data_table(z)
+    z.create_data_table()
 
+    first_foo = Foo(
+        name="a-name", created=date(2023, 1, 4), age=23, parent=Bar(bingo="asd")
+    )
     changes = ZSetPython(
-        {Foo(name="a-name", created=date(2023, 1, 4), age=23, parent=Bar("asd")): 1}
+        {first_foo: 1}
         | {
             Foo(
                 name=f"some-name-{i % 3}",
                 created=date(2023, 1, 20),
                 age=i % 10,
-                parent=Bar(f"pi-{i}"),
+                parent=Bar(bingo=f"pi-{i}"),
             ): 2
             for i in range(33)
         }
@@ -190,8 +202,11 @@ def test_schema_made_and_used(conn: postgres.Conn) -> None:
     z += changes
     z.flush_changes()
 
-    conn.commit()
-    schema = dump_schema()
+    actual = list(z.iter(frozenset((first_foo,))))
+    assert actual == [(first_foo, 1)]
+
+    postgres_conn.commit()
+    schema = dump_schema(postgres_conn)
     ix_str = "CREATE INDEX ix__foo__name ON public.foo USING btree (((data #>> '{name}'::text[])))"
     assert ix_str in schema
     ix_str = "CREATE INDEX ix__foo__name__age ON public.foo USING btree (((data #>> '{name}'::text[])), (((data #>> '{age}'::text[]))::integer))"
@@ -200,21 +215,23 @@ def test_schema_made_and_used(conn: postgres.Conn) -> None:
     assert ix_str in schema
 
     plan = postgres.explain(
-        conn,
+        cur,
         "SELECT * FROM foo WHERE (data #>> '{name}') = 'some-name' AND (data #>> '{age}')::integer = 3",
     )
     assert "Index Scan" in plan
 
-    plan = postgres.explain(conn, "SELECT * FROM foo ORDER BY (data #>> '{name}')")
+    plan = postgres.explain(cur, "SELECT * FROM foo ORDER BY (data #>> '{name}')")
     assert "Index Scan" in plan
 
     postgres.MAKE_TEST_ASSERTIONS = True
     z_generic: ZSet[Foo] = z
 
-    all_keys = [k for k, _ in iter_by_index_grouped(z_generic, ix_created)]
+    all_keys = [k for k, _ in functions.iter_by_index_grouped(z_generic, ix_created)]
     assert all_keys == [date(2023, 1, 4), date(2023, 1, 20)]
 
-    first_keys = [k for k, _ in iter_by_index_grouped(z_generic, ix_name_and_age)][:5]
+    first_keys = [
+        k for k, _ in functions.iter_by_index_grouped(z_generic, ix_name_and_age)
+    ][:5]
     assert first_keys == [
         ("a-name", 23),
         ("some-name-0", 0),
@@ -224,7 +241,8 @@ def test_schema_made_and_used(conn: postgres.Conn) -> None:
     ]
 
     first_inner = [
-        set(inner) for _, inner in iter_by_index_grouped(z_generic, ix_name_and_age)
+        set(inner)
+        for _, inner in functions.iter_by_index_grouped(z_generic, ix_name_and_age)
     ][0]
     expected = {
         (
@@ -240,7 +258,8 @@ def test_schema_made_and_used(conn: postgres.Conn) -> None:
     assert first_inner == expected
 
     second_inner = [
-        set(inner) for _, inner in iter_by_index_grouped(z_generic, ix_name_and_age)
+        set(inner)
+        for _, inner in functions.iter_by_index_grouped(z_generic, ix_name_and_age)
     ][1]
     expected = {
         (
@@ -265,7 +284,7 @@ def test_schema_made_and_used(conn: postgres.Conn) -> None:
     assert second_inner == expected
 
     first_keys_bingo = [
-        k for k, _ in iter_by_index_grouped(z_generic, ix_parent_bingo)
+        k for k, _ in functions.iter_by_index_grouped(z_generic, ix_parent_bingo)
     ][:5]
     assert first_keys_bingo == [
         ("some-name-2", "pi-11"),

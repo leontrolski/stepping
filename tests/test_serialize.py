@@ -13,7 +13,6 @@ from stepping import serialize, types
 la = ZoneInfo("America/Los_Angeles")
 
 
-@dataclass(frozen=True)
 class Bar(types.Data):
     x: int
     y: datetime | None
@@ -24,9 +23,6 @@ class Bar(types.Data):
 class Weird:
     p: int
     q: int
-
-    def identity(self) -> str:
-        return f"{self.p}-{self.q}"
 
     def serialize(self) -> types.Serialized:
         return f"{self.p}-{self.q}"
@@ -43,7 +39,6 @@ class Weird:
 weird: types.Serializable = Weird(5, 6)
 
 
-@dataclass(frozen=True)
 class Foo(types.Data):
     a: date
     b: Annotated[datetime, "oi"]
@@ -58,8 +53,23 @@ class Foo(types.Data):
 foo = Foo(
     a=date(2023, 1, 2),
     b=datetime(1989, 12, 30, 1, 2, 3),
-    bar=Bar(5, datetime(1989, 12, 30, tzinfo=la), [True, False]),
-    bars=[Bar(6, None, [True]), Bar(7, datetime(1989, 12, 30), [False])],
+    bar=Bar(
+        x=5,
+        y=datetime(1989, 12, 30, tzinfo=la),
+        zs=[True, False],
+    ),
+    bars=[
+        Bar(
+            x=6,
+            y=None,
+            zs=[True],
+        ),
+        Bar(
+            x=7,
+            y=datetime(1989, 12, 30),
+            zs=[False],
+        ),
+    ],
     xs=(("str-1", "str-2"), ("str-3",)),
     coord=(1.3, 1.8),
     id=uuid4(),

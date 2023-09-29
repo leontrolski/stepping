@@ -23,33 +23,17 @@ mypy src tests
 
 ## Todos
 
-### Ergonomics
-
-- Think of a nice way to implement nested collections with efficient operations.
-- Wrap `run.iteration` with further nice interface.
-- Is there anything funky we can do like the `immerframe` lib.
-- Add a commit timestamp for the tables for a future API.
-- Write everything up, email the dbsp people from the original paper.
-
-### Operator level
-
-- Make `integrate_zset_indexed` handle many indexes.
-- Allow reducing on many things with `group_reduce_flatten`, eg. count and sum.
-- Change `name: str` everywhere to be `provenance: Provenance`, use this to put boxes round pngs.
-- Allow for (and test) arbitrary depth grouped nesting and joining in a grouped setting - is this necessary, or can it always just be achieved outside the group?
+- Docs.
+- Work out how to parallelize.
+- Write everything up, email the dbsp people from the original paper. In particular, ask question about why the incremental recursive stuff is different from the paper.
+- See suggestions in `performance.md`.
 - Look at 11.8 "Window aggregates"
-- Can `zset.join` of two `ZSetPostgres` just use SQL?
-- Change `transform.finalize` to be like `with freshly_numbered_vertices():` and namespace tables. (There is `reset_vertex_counter(...)` now if that helps).
-- Simplify `haitch`.
+- Replace `integrate_delay` with a nice transform. Similarly, transform shared delays.
+- Test arbitrary depth grouped nesting and joining in a grouped setting (Does this _need_ doing?).
+- Replace `annotate_zset` with `__get_pydantic_core_schema__`.
+- Revisit `st.compile(...)`
 
-### Types level
-
-- `s/T/TSerializable/`
-- Add a `maybe` function that allows for `pick_index(Left, maybe(left.a).foo)`.
-- `s/[T, K]/[K, T]/` everywhere.
-
-
-# How to upload to Pypi
+# Uploading to Pypi
 
 ```bash
 # bump version
@@ -57,4 +41,24 @@ python -m pip install build twine
 python -m build
 twine check dist/*
 twine upload dist/*
+```
+
+# Deploy docs
+
+```bash
+flyctl launch
+flyctl deploy
+flyctl ips list -a stepping-docs
+# set A record to @, IPv4
+# set AAAA record to @, IPv6
+flyctl certs create -a stepping-docs stepping.site
+
+cd docs/doks
+npm install
+npm run start
+npm run build
+cd ..; flyctl deploy; cd -
+
+cd docs
+python ../scripts/md.py ../ $(find -L ../docs-md -name '**.md')
 ```

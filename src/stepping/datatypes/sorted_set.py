@@ -7,7 +7,7 @@ import immutables
 from stepping.datatypes._btree import Ascending, Node, add
 from stepping.datatypes._btree import lt as lt
 from stepping.datatypes._btree import yield_sorted_matching
-from stepping.types import MATCH_ALL, Index, K, MatchAll, TSerializable, choose
+from stepping.types import MATCH_ALL, Index, K, MatchAll, TSerializable
 
 
 class SortedSet(Generic[TSerializable, K]):
@@ -22,7 +22,7 @@ class SortedSet(Generic[TSerializable, K]):
             self.btree = add(
                 self.btree,
                 other,
-                choose(self.index, other),
+                self.index.f(other),
                 self.index.ascending,
             )
             self.added = self.added.set(other, None)
@@ -38,7 +38,7 @@ class SortedSet(Generic[TSerializable, K]):
                 yield n
 
     def iter_matching(
-        self, match_keys: tuple[K, ...] | MatchAll
+        self, match_keys: frozenset[K] | MatchAll
     ) -> Iterator[TSerializable]:
         if isinstance(match_keys, MatchAll):
             yield from self

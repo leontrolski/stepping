@@ -1,53 +1,57 @@
+import pathlib
+from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Any, Iterator
 
 import icdiff
 import pytest
 import testing.postgresql
-from _pytest.monkeypatch import MonkeyPatch
 from prettyprinter import install_extras, pformat
 
-from stepping import config, operators
-from stepping.zset import postgres
+import stepping as st
+from stepping.zset.sql import generic, sqlite
 
 install_extras(warn_on_error=False)
 
-
-@pytest.fixture(autouse=True)
-def reset_operator_i() -> Iterator[None]:
-    yield
-    operators.reset_vertex_counter()
+DB_URL = "postgresql://postgres@127.0.0.1:8421/test"
 
 
 @pytest.fixture(scope="session")
-def dummy_config() -> Iterator[None]:
-    # class scoped monkeypatch
-    mpatch = MonkeyPatch()
-    mpatch.setattr(
-        config,
-        "get_config",
-        lambda: config.Config(
-            DB_URL="postgresql://postgres@127.0.0.1:8421/test",
-        ),
-    )
-    yield
-    mpatch.undo()
-
-
-@pytest.fixture(scope="session")
-def db(dummy_config: None) -> Iterator[str]:
+def postgres_db() -> Iterator[str]:
     with testing.postgresql.Postgresql(port=8421) as postgresql:
         yield postgresql.url()
 
 
 @pytest.fixture
-def conn(db: None) -> Iterator[postgres.Conn]:
-    with postgres.connection() as conn:
+def postgres_conn(postgres_db: None) -> Iterator[st.ConnPostgres]:
+    with st.connection_postgres(DB_URL) as conn:
         yield conn
         with conn.transaction():
-            clean_tables(conn)
+            clean_postgres_tables(conn)
 
 
-def clean_tables(conn: postgres.Conn) -> None:
+@pytest.fixture()
+def sqlite_conn() -> Iterator[generic.ConnSQLite]:
+    p = pathlib.Path(__file__).parent / "stepping-test.db"
+    with sqlite.connection(p) as conn:
+        yield conn
+    p.unlink()
+
+
+@dataclass
+class Conns:
+    postgres: generic.ConnPostgres
+    sqlite: generic.ConnSQLite
+
+
+@pytest.fixture()
+def conns(
+    postgres_conn: generic.ConnPostgres, sqlite_conn: generic.ConnSQLite
+) -> Iterator[Conns]:
+    yield Conns(postgres_conn, sqlite_conn)
+
+
+def clean_postgres_tables(conn: generic.ConnPostgres) -> None:
     qry = """
         SELECT table_name
         FROM information_schema.tables
@@ -59,7 +63,7 @@ def clean_tables(conn: postgres.Conn) -> None:
         # conn.execute(f"DELETE FROM {table_name}")
 
     qry = """
-        SELECT sequencename FROM pg_sequences 
+        SELECT sequencename FROM pg_sequences
         WHERE schemaname IN (SELECT current_schema())
     """
     for (sequence,) in conn.execute(qry):

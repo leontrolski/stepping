@@ -56,3 +56,28 @@ for ts, us in product(y("T", 4), y("U", 4)):
     print(
         f"def actions(store: Store, g: Graph[{az(ts)}, {a2(us)}]) -> {callable_(ts, us)}: ..."
     )
+
+
+def az2(ns: list[str]) -> str:
+    return ", ".join(f"ZSet[{n}]" for n in ns)
+
+def az2_tuple(ns: list[str]) -> str:
+    if len(ns) > 1:
+        foo = ", ".join(f"ZSet[{n}]" for n in ns)
+        return f"tuple[{foo}]"
+    return ", ".join(f"ZSet[{n}]" for n in ns)
+
+
+print()
+for ts, us in product(y("T", 4), y("U", 4)):
+    print("@overload")
+    print(
+        f"def compile(func: Callable[[{az2(ts)}], {az2_tuple(us)}]) -> Graph[{az(ts)}, {az(us)}]: ..."
+    )
+
+# @overload
+# def compile(func: Callable[[ZSet[T1]], ZSet[U1]]) -> Graph[A1[ZSet[T1]], A1[ZSet[U1]]]: ...
+# @overload
+# def compile(func: Callable[[ZSet[T1]], ZSet[U1]]) -> Graph[A1[ZSet[T1]], A1[ZSet[U1]]]: ...
+# @overload
+# def compile(func: Callable[[ZSet[T1], ZSet[T2]], ZSet[U1]]) -> Graph[A2[ZSet[T1], ZSet[T2]], A1[ZSet[U1]]]: ...

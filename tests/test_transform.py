@@ -1,12 +1,19 @@
-from typing import Any
+from typing import Any, Callable
 
+import stepping as st
 import stepping.store
-from stepping import operators, run
-from stepping.graph import Graph, VertexBinary, VertexUnary, write_png
+from stepping import run
+from stepping.graph import (
+    Graph,
+    OperatorKind,
+    Path,
+    VertexBinary,
+    VertexUnary,
+    write_png,
+)
+from stepping.operators import builder
 from stepping.operators.transform import lift_grouped, replace_vertex
-from stepping.types import Grouped
-from stepping.types import RuntimeComposite as R
-from stepping.types import ZSet
+from stepping.types import Grouped, Signature, ZSet
 from stepping.zset.python import ZSetPython
 
 
@@ -18,17 +25,35 @@ def identity(n: ZSet[int]) -> ZSet[int]:
     return n
 
 
-zset_type = R[ZSet[int]].sub()
+zset_type = ZSet[int]
+
+
+def p(s: str) -> Path:
+    return Path((s,))
+
+
+def connect(a: Graph[Any, Any], b: Graph[Any, Any]) -> Graph[Any, Any]:
+    if len(a.output) == 1:
+        internal = {(a.output[0], b.input[i]) for i in range(len(b.input))}
+    else:
+        internal = {(a.output[i], b.input[i]) for i in range(len(a.output))}
+    return Graph(
+        vertices=a.vertices + b.vertices,
+        input=a.input,
+        internal=internal | a.internal | b.internal,
+        output=b.output,
+        run_no_output=b.run_no_output,
+    )
 
 
 def test_replace_vertex() -> None:
-    a1 = VertexBinary(zset_type, zset_type, zset_type, "a1", f=add)
-    d1 = VertexUnary(zset_type, zset_type, "d1", f=identity)
-    e1 = VertexUnary(zset_type, zset_type, "e1", f=identity)
-    f1 = VertexUnary(zset_type, zset_type, "f1", f=identity)
-    g1 = VertexUnary(zset_type, zset_type, "g1", f=identity)
-    graph = a1.g.connect(d1.g).connect(e1.g)
-    actual = replace_vertex(graph, d1, f1.g.connect(g1.g))
+    a1 = VertexBinary(zset_type, zset_type, zset_type, OperatorKind.add, p("a1"), f=add)  # type: ignore[type-abstract]
+    d1 = VertexUnary(zset_type, zset_type, OperatorKind.add, p("d1"), f=identity)  # type: ignore[type-abstract]
+    e1 = VertexUnary(zset_type, zset_type, OperatorKind.add, p("e1"), f=identity)  # type: ignore[type-abstract]
+    f1 = VertexUnary(zset_type, zset_type, OperatorKind.add, p("f1"), f=identity)  # type: ignore[type-abstract]
+    g1 = VertexUnary(zset_type, zset_type, OperatorKind.add, p("g1"), f=identity)  # type: ignore[type-abstract]
+    graph = connect(connect(a1.as_graph, d1.as_graph), e1.as_graph)
+    actual = replace_vertex(graph, d1, connect(f1.as_graph, g1.as_graph))
 
     expected = Graph[Any, Any](
         vertices=[a1, e1, f1, g1],
@@ -39,20 +64,25 @@ def test_replace_vertex() -> None:
             (g1, (e1, 0)),
         },
         output=[e1],
+        run_no_output=[],
     )
     assert actual == expected
 
 
 def test_crazy_group_transform(request: Any) -> None:
-    integrate = operators.integrate(int)
+    integrate = builder.compile_generic(
+        st.integrate,
+        {},
+        Signature([("a", str)], {}, str),
+        Path(),
+    )
     g = lift_grouped(str, integrate)
+
     if request.config.getoption("--write-graphs"):
-        write_png(
-            g, "graphs/transform/test_crazy_group_transform.png", simplify_labels=False
-        )
+        write_png(g, "graphs/test_crazy_group_transform.png", simplify_labels=False)
 
     def group(d: dict[str, int]) -> Grouped[int, str]:
-        out = Grouped(int, str)
+        out = Grouped[int, str]()
         for k, v in d.items():
             out.set(k, v)
         return out
@@ -69,13 +99,22 @@ def test_crazy_group_transform(request: Any) -> None:
 
 
 def test_transform_grouped_reduce(request: Any) -> None:
-    reduce1 = operators.reduce(int, int, pick_reducable=lambda f: f)
-    g = lift_grouped(str, reduce1)
+    reduce2 = builder.compile_generic(
+        st.reduce,
+        {"zero": int, "pick_value": lambda f: f},
+        Signature(
+            [("a", ZSet[int])],
+            {"zero": Callable[[], int], "pick_value": Callable[[int], int]},  # type: ignore
+            str,
+        ),
+        Path(),
+    )
+    g = lift_grouped(str, reduce2)
     if request.config.getoption("--write-graphs"):
-        write_png(g, "graphs/transform/test_transform_grouped_reduce.png")
+        write_png(g, "graphs/test_transform_grouped_reduce.png")
 
     def group(d: dict[str, dict[int, int]]) -> Grouped[ZSet[int], str]:
-        out = Grouped(R[ZSet[int]].sub(), str)
+        out = Grouped[ZSet[int], str]()
         for k, v in d.items():
             out.set(k, ZSetPython(v))
         return out

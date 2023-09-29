@@ -93,7 +93,7 @@ lastMod = false
   lazySizes = true
   clipBoard = true
   instantPage = true
-  flexSearch = false
+  flexSearch = true
   searchSectionsShow = []
   searchSectionsIndex = []
   darkMode = false
@@ -111,4 +111,4 @@ lastMod = false
 [menu]
   [menu.section]
     auto = true
-    collapsibleSidebar = true
+    collapsibleSidebar = false

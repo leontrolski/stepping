@@ -1,36 +1,33 @@
 from __future__ import annotations
 
-import inspect
-import json
-from dataclasses import dataclass, field, is_dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
-from types import NoneType, UnionType
+from itertools import islice
+from types import NoneType
 from typing import (
-    Annotated,
     Any,
     Callable,
     Generic,
     Iterator,
     Protocol,
+    Self,
     Set,
     TypeVar,
-    Union,
     get_args,
     get_origin,
-    overload,
+    get_type_hints,
     runtime_checkable,
 )
 from uuid import UUID
 
-from mashumaro.mixins.json import DataClassJSONMixin
+import pydantic
 
-from stepping import graph, serialize, types_helpers
+from stepping import graph, serialize
 
 # fmt: off
 
 @runtime_checkable
 class SerializableObject(Protocol):
-    def identity(self) -> str: ...
     def serialize(self) -> Serialized: ...
     @classmethod
     def make_deserialize(cls: type[T]) -> Callable[[Serialized], T]: ...
@@ -64,9 +61,14 @@ U = TypeVar("U")
 V = TypeVar("V")
 X = TypeVar("X")
 Y = TypeVar("Y")
+Z = TypeVar("Z")
 K = TypeVar("K", bound=Indexable)
+T_co = TypeVar("T_co", covariant=True)
+K_co = TypeVar("K_co", bound=Indexable, covariant=True)
 KAtom = TypeVar("KAtom", bound=IndexableAtom)
+TIndexable = TypeVar("TIndexable", bound=Indexable)
 TSerializable = TypeVar("TSerializable", bound=Serializable)
+TSerializable_co = TypeVar("TSerializable_co", bound=Serializable)
 VSerializable = TypeVar("VSerializable", bound=Serializable)
 TAddable = TypeVar("TAddable", bound=Addable)
 UAddable  = TypeVar("UAddable", bound=Addable)
@@ -79,126 +81,76 @@ Number = TypeVar("Number", int, float)
 class ZSet(Protocol[T]):
     @property
     def indexes(self) -> tuple[Index[T, Indexable], ...]: ...
-    def __neg__(self) -> ZSet[T]: ...
-    def __add__(self, other: ZSet[T]) -> ZSet[T]: ...
-    def iter(self) -> Iterator[tuple[T, int]]: ...
-    def iter_by_index_generic(
-        self, index: Index[T, Indexable], match_keys: tuple[Indexable, ...] | MatchAll = MATCH_ALL
-    ) -> Iterator[tuple[Indexable, T, int]]: ...
+    def __neg__(self) -> Self: ...
+    def __add__(self, other: ZSet[T]) -> Self: ...
+    def iter(self, match: frozenset[T] | MatchAll = MATCH_ALL) -> Iterator[tuple[T, int]]: ...
+    # This should be: (See bottom of file).
+    # def iter_by_index(
+    #     self, index: Index[T, K], match_keys: frozenset[K] | MatchAll = MATCH_ALL
+    # ) -> Iterator[tuple[K, T, int]]: ...
+    iter_by_index: _IterByIndex[T]
 
 class Store(Protocol):
     @property
-    def _current(self) -> dict[graph.Vertex, ZSet[Any]]: ...
-    def get(self, vertex: graph.Vertex) -> Any: ...
-    def set(self, vertex: graph.Vertex, value: Any) -> None: ...
-    def inc(self) -> None: ...
+    def _current(self) -> dict[graph.VertexUnaryDelay[Any, Any], ZSet[Any]]: ...
+    def get(self, vertex: graph.VertexUnaryDelay[Any, Any]) -> ZSet[Any]: ...
+    def set(self, vertex: graph.VertexUnaryDelay[Any, Any], value: Any) -> None: ...
+    def inc(self, flush: bool) -> None: ...
 
+@runtime_checkable
+class Transformer(Protocol):
+    def lift(self, ret: type) -> type: ...
+    def unlift(self, arg: type) -> type: ...
+    def transform(self, g: graph.Graph[Any, Any]) -> graph.Graph[Any, Any]: ...
+@runtime_checkable
+class TransformerBuilder(Protocol):
+    def from_arg_types(self, args: list[tuple[str, type]]) -> Transformer: ...
 # fmt: on
 
 
-@dataclass(frozen=True)
-class Index(Generic[T, K]):
+@dataclass(frozen=True, eq=False)
+class Index(Generic[T_co, K_co]):
     fields: str | tuple[str, ...]
     ascending: bool | tuple[bool, ...]
-    k: type[K]
+    f: Callable[[T_co], K_co]
+    t: type[T_co]
+    k: type[K_co]
 
-    @property
-    def generic(self) -> Index[T, Indexable]:
-        return self  # type: ignore
-
-
-@dataclass(frozen=True)
-class Field(Generic[T, V]):
-    fields: str | tuple[str, ...]
-    k: type[V]
-
-
-def pick_identity(t: type[KAtom], ascending: bool = True) -> Index[KAtom, KAtom]:
-    return Index[KAtom, KAtom](
-        "",
-        ascending,
-        t,
-    )
-
-
-def pick_index(
-    t: type[T], f: Callable[[T], K], ascending: bool | tuple[bool, ...] = True
-) -> Index[T, K]:
-    fields = types_helpers.retrieve_fields()
-    k = _type_from_fields(t, fields)
-    if ascending is True:
-        ascending = (True,) * len(get_args(k)) if is_type(k, tuple) else True
-    if ascending is False:
-        ascending = (False,) * len(get_args(k)) if is_type(k, tuple) else False
-    return Index(
-        fields,
-        ascending,
-        k,  # type: ignore
-    )
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, Index):
+            return False
+        return (
+            self.fields,
+            self.ascending,
+            self.t,
+            self.k,
+        ) == (
+            other.fields,
+            other.ascending,
+            other.t,
+            other.k,
+        )
 
 
-def pick_field(t: type[T], f: Callable[[T], V]) -> Field[T, V]:
-    fields = types_helpers.retrieve_fields()
-    k = _type_from_fields(t, fields)
-    return Field(
-        fields,
-        k,  # type: ignore
-    )
-
-
-# fmt: off
-@overload
-def choose(index: Index[T, K], v: T) -> K: ...
-@overload
-def choose(index: Field[T, V], v: T) -> V: ...
-# fmt: on
-def choose(index: Index[T, K] | Field[T, V], v: T) -> K | V:
-    if isinstance(index.fields, tuple):
-        return tuple(_choose(v, f) for f in index.fields)  # type: ignore
-    return _choose(v, index.fields)  # type: ignore
-
-
-def _choose(v: Any, field: str) -> Indexable:
-    if field == "":
-        return v  # type: ignore
-    out = v
-    for f in field.split("."):
-        if f.isdigit():
-            out = out[int(f)]
-        else:
-            out = getattr(out, f)
-    return out  # type: ignore
-
-
-@dataclass(frozen=True)
-class Data(DataClassJSONMixin):
-    def identity(self) -> str:
-        return json.dumps(self.serialize(), separators=(",", ":"), sort_keys=True)
+class Data(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(frozen=True)
 
     def serialize(self) -> dict[str, Serialized]:
-        return json.loads(super().to_json())  # type: ignore
-        # should be: return super().to_dict() - not sure why not working...
+        return self.model_dump(mode="json")
 
     @classmethod
     def make_deserialize(cls: type[T]) -> Callable[[Serialized], T]:
         def inner(data: Serialized) -> T:
             assert isinstance(data, dict)
-            return cls.from_dict(data)  # type: ignore[no-any-return,attr-defined]
+            return cls(**data)
 
         return inner
 
 
 @dataclass(frozen=True)
-class Pair(Generic[T, U], Data):
+class Pair(Generic[T, U]):
     left: T
     right: U
-
-    def identity(self) -> str:
-        return (
-            serialize.make_identity(self.left)  # type:ignore[arg-type]
-            + ","
-            + serialize.make_identity(self.right)  # type:ignore[arg-type]
-        )
 
     def serialize(self) -> dict[str, Serialized]:
         return dict(
@@ -223,8 +175,6 @@ class Pair(Generic[T, U], Data):
 
 @dataclass
 class Grouped(Generic[T, K]):
-    t: type[T]
-    k: type[K]
     _data: dict[K, T] = field(default_factory=dict)
 
     def set(self, k: K, v: T) -> None:
@@ -235,17 +185,64 @@ class Grouped(Generic[T, K]):
             return self._data[k]
         return EMPTY
 
-    def iter(self) -> Iterator[tuple[K, T]]:
+    def iter(self) -> Iterator[tuple[T, K]]:
         for k, v in self._data.items():
-            yield k, v
+            yield v, k
 
     def keys(self) -> Set[K]:
         return set(self._data.keys())
 
 
+@dataclass
+class Signature:
+    args: list[tuple[str, type]]
+    kwargs: dict[str, type]
+    ret: type
+    transformer: Transformer | None = None
+
+
+def pick_identity(t: type[KAtom], ascending: bool = True) -> Index[KAtom, KAtom]:
+    return Index[KAtom, KAtom](
+        "",
+        ascending,
+        lambda t: t,
+        t,
+        t,
+    )
+
+
+def pick_index(
+    t: type[T], f: Callable[[T], K], ascending: bool | tuple[bool, ...] = True
+) -> Index[T, K]:
+    proxy = f(Proxy(t))  # type: ignore[arg-type]
+    if isinstance(proxy, tuple):
+        k = tuple[*(p.t for p in proxy)]  # type: ignore
+        fields = tuple(p.fields for p in proxy)
+    else:
+        k = proxy.t  # type: ignore
+        fields = proxy.fields  # type: ignore
+
+    if ascending is True:
+        ascending = (True,) * len(get_args(k)) if is_type(k, tuple) else True
+    if ascending is False:
+        ascending = (False,) * len(get_args(k)) if is_type(k, tuple) else False
+    return Index(
+        fields,
+        ascending,
+        f,
+        t,
+        k,
+    )
+
+
 def is_type(t: type, check: type) -> bool:
-    t = strip_annotated(t)
     return get_origin(t) is check
+
+
+def get_annotation_zset(t: type[ZSet[T]]) -> type[T]:
+    assert is_type(t, ZSet)
+    (t_zsetted,) = get_args(t)
+    return t_zsetted  # type: ignore
 
 
 def get_annotation_grouped(t: type[Grouped[T, K]]) -> type[T]:
@@ -264,93 +261,80 @@ def get_annotation_grouped_zset(
     return t, k  # type: ignore
 
 
-def get_annotation_indexes(
-    t: type[ZSet[T]],
-) -> tuple[type[T], tuple[Index[T, Indexable], ...]]:
-    assert is_type(t, ZSet)
-    if get_origin(t) is Annotated:
-        t, *indexes = get_args(t)
-        (inner_t,) = get_args(t)
-        return inner_t, tuple(indexes)
-    (inner_t,) = get_args(t)
-    return inner_t, ()
+# https://docs.python.org/3/library/itertools.html#itertools-recipes
+def batched(iterable: list[T], n: int) -> Iterator[list[T]]:
+    it = iter(iterable)
+    while batch := list(islice(it, n)):
+        yield batch
 
 
-def strip_annotated(t: T) -> T:
-    origin = get_origin(t)
-    if origin is None:
-        return t
-    args = get_args(t)
-    if origin is Annotated:
-        inner_type, *_ = args
-        return strip_annotated(inner_type)  # type: ignore
-    if origin is UnionType:
-        origin = Union
-    return origin[*(strip_annotated(inner_type) for inner_type in args)]  # type: ignore
+# Proxy
 
 
-@dataclass
-class RuntimeComposite(Generic[T]):
-    @classmethod
-    def sub(cls, **replace: Any) -> type[T]:
-        called_from = inspect.stack()[1]
-        code = types_helpers.call_site_code(called_from)
-        try:
-            slice = code.body[0].value.func.value.slice  # type: ignore
-        except SyntaxError:
-            raise RuntimeError("Couldn't parse the call-site to .sub()")
-        builtins = called_from.frame.f_globals["__builtins__"]
-        scope = dict(called_from.frame.f_globals) | builtins
-        scope.update(called_from.frame.f_locals)
-        for k, v in replace.items():
-            scope[k] = v
-        return types_helpers.from_ast(scope, slice)
+def _get_generic_args(t: type) -> tuple[type, ...]:
+    """Get the arguments of the parent Generic.
+
+    Pair -> [T, U]
+
+    """
+    parent_class_generic = next(
+        b
+        for a, b in zip(t.__bases__, t.__orig_bases__)  # type: ignore
+        if issubclass(a, Generic)  # type: ignore
+    )
+    return get_args(parent_class_generic)
 
 
-def _type_from_fields(t: type[T], fields: str | tuple[str, ...]) -> type[Indexable]:
-    if isinstance(fields, tuple):
-        return tuple[*(_type_from_parts(t, f.split(".")) for f in fields)]  # type: ignore
-    return _type_from_parts(t, fields.split("."))
+def _name_type_map_from_dataclass(t: type) -> dict[str, type]:
+    """Inspect a dataclass and return a map of field name to type.
 
+    Pair[User, Meter] -> {'left': User, 'right': Meter}
 
-def _type_from_parts(t: type[Any] | UnionType, parts: list[str]) -> type[Indexable]:
-    t = strip_annotated(t)
+    """
     original_t = get_origin(t) or t
+    name_type_map = get_type_hints(original_t)
+    if t != original_t:
+        generic_args = _get_generic_args(original_t)
+        assert len(generic_args) == len(get_args(t))
+        generic_specific_map = dict(zip(generic_args, get_args(t)))
+        name_type_map = {k: generic_specific_map[v] for k, v in name_type_map.items()}
+    return name_type_map
 
-    if is_dataclass(original_t):
-        assert not isinstance(t, UnionType)
-        first, *parts = parts
-        inner_type = types_helpers.name_type_map_from_dataclass(t)[first]
-        return _type_from_parts(inner_type, parts)
 
-    if original_t is tuple and parts:
-        first, *parts = parts
-        assert first.isdigit()
-        inner_type = get_args(t)[int(first)]
-        return _type_from_parts(inner_type, parts)
+@dataclass(frozen=True)
+class Proxy:
+    t: type
+    _path: tuple[str | int, ...] = ()
 
-    if get_origin(t) is Union or isinstance(t, UnionType):
-        inner_types = set(get_args(t))
-        if {int, float, bool} & inner_types and (
-            (len(inner_types) == 2 and inner_types - {int, float, bool} != {NoneType})
-            or len(inner_types) != 1
-        ):
-            raise RuntimeError(
-                "Postgres won't index JSON on (ints | float | bool) | Other"
-            )
-        for inner_type in inner_types:
-            assert inner_type in {NoneType, str, date, datetime, UUID}
-        return t  # type: ignore
+    @property
+    def fields(self) -> str:
+        return ".".join(str(n) for n in self._path)
 
-    if original_t is not tuple and t not in IndexableAtomTypes:
-        raise RuntimeError(
-            f"Expected to terminate on an IndeaxbleAtom type, instead saw: {t}"
-        )
+    def __getattr__(self, key: str) -> Proxy:
+        assert isinstance(key, str)
+        return Proxy(_name_type_map_from_dataclass(self.t)[key], self._path + (key,))
 
-    if len(parts) != 0:
-        raise RuntimeError(
-            f"We've hit an atom type, but still have parts of the "
-            f"field: '{'.'.join(parts)}' left to consume"
-        )
+    def __getitem__(self, key: int) -> Proxy:
+        assert isinstance(key, int)
+        return Proxy(get_args(self.t)[key], self._path + (key,))
 
-    return t
+
+# Bodge for https://stackoverflow.com/questions/77075322/
+
+
+class ZSetBodgeMeta(type):
+    def __new__(cls, name, bases, d):  # type: ignore
+        if "_iter_by_index" in d:
+            d["iter_by_index"] = d["_iter_by_index"]
+        return super().__new__(cls, name, bases, d)
+
+
+class ZSetBodge(Generic[T], metaclass=ZSetBodgeMeta):
+    iter_by_index: _IterByIndex[T]
+
+
+class _IterByIndex(Protocol[T]):
+    def __call__(
+        self, index: Index[T, K], match_keys: frozenset[K] | MatchAll = MATCH_ALL
+    ) -> Iterator[tuple[K, T, int]]:
+        ...

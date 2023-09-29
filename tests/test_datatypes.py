@@ -62,29 +62,27 @@ def test_btree_basic_matching() -> None:
     for n in range(1000):
         s.add(n)
 
-    assert list(s.iter_matching((0,))) == [0]
-    assert list(s.iter_matching((500,))) == [500]
-    assert list(s.iter_matching((999,))) == [999]
-    assert list(s.iter_matching((3,))) == [3]
-    assert list(s.iter_matching((800,))) == [800]
-    assert list(s.iter_matching((1001,))) == []
+    assert list(s.iter_matching(frozenset((0,)))) == [0]
+    assert list(s.iter_matching(frozenset((500,)))) == [500]
+    assert list(s.iter_matching(frozenset((999,)))) == [999]
+    assert list(s.iter_matching(frozenset((3,)))) == [3]
+    assert list(s.iter_matching(frozenset((800,)))) == [800]
+    assert list(s.iter_matching(frozenset((1001,)))) == []
 
-    assert list(s.iter_matching((500, 600))) == [500, 600]
-    assert list(s.iter_matching((600, 500))) == [500, 600]
-    assert list(s.iter_matching((600, 200, 1001))) == [200, 600]
-    assert list(s.iter_matching(())) == []
+    assert list(s.iter_matching(frozenset((500, 600)))) == [500, 600]
+    assert list(s.iter_matching(frozenset((600, 500)))) == [500, 600]
+    assert list(s.iter_matching(frozenset((600, 200, 1001)))) == [200, 600]
+    assert list(s.iter_matching(frozenset(()))) == []
 
 
 def test_btree_tuple_matching() -> None:
-    index = types.pick_index(
-        types.RuntimeComposite[tuple[int, int]].sub(), lambda t: t[1]
-    )
-    s = sorted_set.SortedSet(index)
+    index = types.pick_index(tuple[int, int], lambda t: t[1])  # type: ignore
+    s = sorted_set.SortedSet(index)  # type: ignore
 
     for n in range(40):
-        s.add((n, n % 10))
+        s.add((n, n % 10))  # type: ignore
 
-    assert list(s.iter_matching((4, 3))) == [
+    assert list(s.iter_matching((4, 3))) == [  # type: ignore
         (3, 3),
         (13, 3),
         (23, 3),
@@ -96,7 +94,6 @@ def test_btree_tuple_matching() -> None:
     ]
 
 
-@dataclass(frozen=True)
 class Cat(types.Data):
     age: date | None
     name: str
@@ -106,11 +103,11 @@ def test_btree_complex() -> None:
     index = types.pick_index(Cat, lambda c: (c.age, c.name))
     s = sorted_set.SortedSet(index)
 
-    _0 = Cat(None, "a")
-    _1 = Cat(date(2000, 1, 1), "a")
-    _2 = Cat(date(2000, 1, 2), "a")
-    _3 = Cat(date(2000, 1, 3), "a")
-    _4 = Cat(date(2000, 1, 3), "b")
+    _0 = Cat(age=None, name="a")
+    _1 = Cat(age=date(2000, 1, 1), name="a")
+    _2 = Cat(age=date(2000, 1, 2), name="a")
+    _3 = Cat(age=date(2000, 1, 3), name="a")
+    _4 = Cat(age=date(2000, 1, 3), name="b")
 
     s.add(_1)
     assert list(s) == [_1]
@@ -148,11 +145,11 @@ def test_btree_complex_reverse() -> None:
     index = types.pick_index(Cat, lambda c: (c.age, c.name), ascending=(True, False))
     s = sorted_set.SortedSet(index)
 
-    _0 = Cat(None, "a")
-    _1 = Cat(date(2000, 1, 1), "a")
-    _2 = Cat(date(2000, 1, 2), "a")
-    _3 = Cat(date(2000, 1, 3), "b")
-    _4 = Cat(date(2000, 1, 3), "a")
+    _0 = Cat(age=None, name="a")
+    _1 = Cat(age=date(2000, 1, 1), name="a")
+    _2 = Cat(age=date(2000, 1, 2), name="a")
+    _3 = Cat(age=date(2000, 1, 3), name="b")
+    _4 = Cat(age=date(2000, 1, 3), name="a")
 
     s.add(_1)
     assert list(s) == [_1]
@@ -181,5 +178,5 @@ def test_btree_profile() -> None:
     with cProfile.Profile() as pr:
         for r in rs:
             s.add(r)
-    pr.dump_stats("btree.prof")
+    pr.dump_stats("test_btree_profile.prof")
     print(s)

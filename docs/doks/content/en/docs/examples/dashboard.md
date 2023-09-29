@@ -13,4 +13,4 @@ weight: 302
 toc: true
 ---
 
-_Coming soon..._
+_Coming soon -- the intention is to demonstrate some dashboard-like pages with graphs per day over time._

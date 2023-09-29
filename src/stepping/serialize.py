@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import uuid
 from datetime import date, datetime
 from functools import cache
 from types import NoneType, UnionType
@@ -13,7 +16,6 @@ from stepping import types
 def _make_deserialize(
     t: type[types.TSerializable] | UnionType,
 ) -> Callable[[types.Serialized], types.TSerializable]:
-    t = types.strip_annotated(t)
     original_t = t
     origin = get_origin(t)
 
@@ -42,19 +44,14 @@ def _make_deserialize(
 
     t = cast(type[types.TSerializable], origin or t)
 
-    if issubclass(t, date):
+    if issubclass(t, (datetime, date)):
 
         def inner(n: types.Serialized) -> types.TSerializable:
             assert isinstance(n, str)
-            return date.fromisoformat(n)  # type: ignore
-
-        return inner
-
-    if issubclass(t, datetime):
-
-        def inner(n: types.Serialized) -> types.TSerializable:
-            assert isinstance(n, str)
-            return datetime.fromisoformat(n)  # type: ignore
+            try:  # fix this bodge?
+                return date.fromisoformat(n)  # type: ignore[return-value]
+            except ValueError:
+                return datetime.fromisoformat(n)  # type: ignore[return-value]
 
         return inner
 
@@ -62,7 +59,7 @@ def _make_deserialize(
 
         def inner(n: types.Serialized) -> types.TSerializable:
             assert isinstance(n, str)
-            return UUID(n)  # type: ignore
+            return UUID(n)  # type: ignore[return-value]
 
         return inner
 
@@ -70,7 +67,7 @@ def _make_deserialize(
 
         def inner(n: types.Serialized) -> types.TSerializable:
             assert isinstance(n, t)
-            return n  # type: ignore
+            return n  # type: ignore[return-value]
 
         return inner
 
@@ -97,12 +94,20 @@ def serialize(n: types.Serializable) -> types.Serialized:
         return str(n)
     if isinstance(n, (tuple, list)):
         return [serialize(m) for m in n]
-    if isinstance(n, types.SerializableObject):
+    # if isinstance(n, types.SerializableObject):
+    if hasattr(n, "serialize"):
         return n.serialize()
     raise RuntimeError(f"Value of unknown type: {n}")
 
 
-def make_identity(n: types.Serializable) -> str:
+def _hash(d: types.SerializableObject) -> str:
+    json_str = json.dumps(d.serialize(), separators=(",", ":"), sort_keys=True)
+    md5 = hashlib.md5()
+    md5.update(json_str.encode())
+    return str(uuid.UUID(md5.hexdigest()))
+
+
+def make_identity(n: types.Serializable | tuple[types.Serializable, ...]) -> str:
     if isinstance(n, (int, float, str, bool, UUID)) or n is None:
         return str(n)
     if isinstance(n, date):
@@ -111,6 +116,7 @@ def make_identity(n: types.Serializable) -> str:
         return n.isoformat()
     if isinstance(n, (tuple, list)):
         return ",".join(make_identity(m) for m in n)
-    if isinstance(n, types.SerializableObject):
-        return n.identity()
+    # if isinstance(n, types.SerializableObject):
+    if hasattr(n, "serialize"):
+        return _hash(n)
     raise RuntimeError(f"Value of unknown type: {n}")
