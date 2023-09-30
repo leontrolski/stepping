@@ -13,11 +13,13 @@ weight: 506
 toc: true
 ---
 
-# ZSets
+## ZSets
 
-`ZSet`s can be added `a + b`, negated `-a`, `ZSetPython`s can be multiplied `a * n`.
+`ZSet`s can be added `a + b`, negated `-a`, `ZSetPython`s can be multiplied `a * n`
 
 They also have the following methods:
+
+<hr>
 
 ```python
 def iter(
@@ -27,7 +29,9 @@ def iter(
     ...
 ```
 
-Iterates over the value, count of the `ZSet` in no particular order. Optionally filter on a set of values.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+iter%28%22&type=code) Iterates over the value, count of the `ZSet` in no particular order. Optionally filter on a set of values.
+
+<hr>
 
 ```python
 def iter_by_index(
@@ -38,7 +42,7 @@ def iter_by_index(
     ...
 ```
 
-Iterates over the key, value, count of the indexed `ZSet` in the order defined by the index. Optionally filter on a set of values.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+_iter_by_index%28%22&type=code) Iterates over the key, value, count of the indexed `ZSet` in the order defined by the index. Optionally filter on a set of values.
 
 # Operators
 
@@ -50,7 +54,9 @@ st.identity_print(
 ) -> T
 ```
 
-Prints `a`, then returns it.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+identity_print%28%22&type=code) Prints `a`, then returns it.
+
+<hr>
 
 ```python
 st.ensure_python_zset(
@@ -58,7 +64,8 @@ st.ensure_python_zset(
 ) -> st.ZSet[T]
 ```
 
-Converts `ZSetSQl` -> `ZSetPython`.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+ensure_python_zset%28%22&type=code) Converts `ZSetSQl` -> `ZSetPython`
+
 
 ## Day to day
 
@@ -70,7 +77,9 @@ st.map(
 ) -> st.ZSet[V]
 ```
 
-Maps function `f` over all the values in `a`.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+map%28%22&type=code) Maps function `f` over all the values in `a`
+
+<hr>
 
 ```python
 st.map_many(
@@ -80,7 +89,9 @@ st.map_many(
 ) -> st.ZSet[V]
 ```
 
-Maps function `f` over all the values in `a`. `f` returns many values in a `frozenset`, these are unioned together in the returned `ZSet`.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+map_many%28%22&type=code) Maps function `f` over all the values in `a`. `f` returns many values in a `frozenset`, these are unioned together in the returned `ZSet`
+
+<hr>
 
 ```python
 st.filter(
@@ -90,7 +101,9 @@ st.filter(
 ) -> st.ZSet[T]
 ```
 
-Equivalent to SQL's `WHERE`.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+filter%28%22&type=code) Equivalent to SQL's `WHERE`
+
+<hr>
 
 ```python
 st.join(
@@ -102,7 +115,9 @@ st.join(
 ) -> st.ZSet[st.Pair[T, U]]
 ```
 
-Equivalent to SQL's `LEFT JOIN`.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+join_lifted%28%22&type=code) Equivalent to SQL's `JOIN`
+
+<hr>
 
 ```python
 st.outer_join(
@@ -114,7 +129,9 @@ st.outer_join(
 ) -> st.ZSet[st.Pair[T, Union[U, st.Empty]]]
 ```
 
-Equivalent to SQL's `LEFT OUTER JOIN`, with `Empty()` equivalent to `NULL`.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+outer_join_lifted%28%22&type=code) Equivalent to SQL's `LEFT OUTER JOIN`, with `Empty()` equivalent to `NULL`
+
+<hr>
 
 ```python
 st.distinct(
@@ -122,7 +139,9 @@ st.distinct(
 ) -> st.ZSet[T]
 ```
 
-Equivalent to SQL's `DISTINCT`.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+distinct_lifted%28%22&type=code) Equivalent to SQL's `DISTINCT`
+
+<hr>
 
 ```python
 st.add(
@@ -131,7 +150,9 @@ st.add(
 ) -> TAddable
 ```
 
-Adds two values, equivalent to SQL's `UNION` when applied to `ZSet`s.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+add%28%22&type=code) Adds two values, equivalent to SQL's `UNION` when applied to `ZSet`s.
+
+<hr>
 
 ```python
 st.count(
@@ -139,9 +160,9 @@ st.count(
 ) -> st.ZSet[int]
 ```
 
-Counts the number of values (effectively `sum(count for _, count in a.iter())`).
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+count_lifted%28%22&type=code) Counts the number of values (effectively `sum(count for _, count in a.iter())`). Returns a `ZSet` containing a single `int`
 
-Returns a `ZSet` containing a single `int`.
+<hr>
 
 ```python
 st.first_n(
@@ -152,7 +173,7 @@ st.first_n(
 ) -> st.ZSet[T]
 ```
 
-Similar to SQL's `ORDER BY ... LIMIT n`. The output is unordered (it's still a `ZSet`), but calling:
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+first_n_lifted%28%22&type=code) Similar to SQL's `ORDER BY ... LIMIT n`. The output is unordered (it's still a `ZSet`), but calling:
 
 ```python
 for key, value, count in z.iter_by_index(index):
@@ -161,15 +182,17 @@ for key, value, count in z.iter_by_index(index):
 
 Will yield values ordered by the index.
 
+<hr>
+
 ```python
 st.transitive_closure(
     a: st.ZSet[st.Pair[TIndexable, TIndexable]],
 ) -> st.ZSet[st.Pair[TIndexable, TIndexable]]
 ```
 
-Given a set of edges `left -> right`, returns the [transitive closure](https://en.wikipedia.org/wiki/Transitive_closure#/media/File:Transitive-closure.svg) of all the edges.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+transitive_closure_lifted%28%22&type=code) Given a set of edges `left -> right`, returns the [transitive closure](https://en.wikipedia.org/wiki/Transitive_closure#/media/File:Transitive-closure.svg) of all the edges.
 
-Example, given:
+**Example** -- given:
 
 ```
 left right
@@ -197,6 +220,7 @@ left right
 
 Read the code for ideas implementing other recursive functions.
 
+
 ## Group/Reduce
 
 ```python
@@ -208,12 +232,14 @@ st.reduce(
 ) -> st.ZSet[TReducable]
 ```
 
-A more general version of `st.count(...)`. In common usage `zero` and `pick_value` will be functions that either:
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+reduce_lifted%28%22&type=code) A more general version of `st.count(...)`. In common usage `zero` and `pick_value` will be functions that either:
 
 - Return `0` and an `int`, thereby implementing SQL's `SUM`.
-- Return an empty `ZSetPython[SomeType]` and a `ZSetPython[SomeType]` respectively, thereby (kinda) implementing SQL's `ARRAY_AGG`.
+- Return an empty `ZSetPython[SomeType]` and a `ZSetPython[SomeType]` respectively, thereby (kinda) implementing SQL's `ARRAY_AGG`
 
 _Note that to handle the removal of rows in the inputted changes, `TReducable` has to implement `__mul__` (which luckily `ZSetPython`s do)._
+
+<hr>
 
 ```python
 st.group_reduce_flatten(
@@ -225,9 +251,11 @@ st.group_reduce_flatten(
 ) -> st.ZSet[st.Pair[TReducable, K]]
 ```
 
-Equivalent to SQL's `SELECT reduce(...) FROM ... GROUP BY ...`. In common usage `zero` and `pick_value` will be functions that return a `ZSetPython[SomeType]`.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+group_reduce_flatten_lifted%28%22&type=code) Equivalent to SQL's `SELECT reduce(...) FROM ... GROUP BY ...`. In common usage `zero` and `pick_value` will be functions that return a `ZSetPython[SomeType]`
 
-The output is a `ZSet` of pairs of: the reduced value and the key they were grouped by.
+The output is a `ZSet` of pairs of the reduced value and the key they were grouped by.
+
+<hr>
 
 ```python
 st.group(
@@ -237,7 +265,9 @@ st.group(
 ) -> st.Grouped[st.ZSet[T], K]
 ```
 
-Groups `a` by a key.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+group%28%22&type=code) Groups `a` by a key.
+
+<hr>
 
 ```python
 st.flatten(
@@ -245,7 +275,8 @@ st.flatten(
 ) -> st.ZSet[st.Pair[T, K]]
 ```
 
-Flattens a `Group` to a more useful `ZSet`.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+flatten%28%22&type=code) Flattens a `Group` to a more useful `ZSet`
+
 
 ## Internal
 
@@ -255,7 +286,9 @@ st.neg(
 ) -> TNegable
 ```
 
-Return `-a` (remember, applicable to `ZSet`s).
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+neg%28%22&type=code) Returns `-a` (remember, applicable to `ZSet`s).
+
+<hr>
 
 ```python
 st.make_scalar(
@@ -265,7 +298,9 @@ st.make_scalar(
 ) -> T
 ```
 
-Turn a `ZSet` of count = 1 to a scalar value.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+make_scalar%28%22&type=code) Turn a `ZSet` of count = 1 to a scalar value.
+
+<hr>
 
 ```python
 st.make_set(
@@ -273,8 +308,9 @@ st.make_set(
 ) -> st.ZSet[T]
 ```
 
-Turn a scalar into a `ZSet` of count = 1. SQL implicitly does this if you do `SELECT 1`.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+make_set%28%22&type=code) Turn a scalar into a `ZSet` of count = 1. SQL implicitly does this if you do `SELECT 1`
 
+<hr>
 
 ```python
 st.add3(
@@ -284,7 +320,9 @@ st.add3(
 ) -> TAddable
 ```
 
-Add three things.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+add3%28%22&type=code) Add three things.
+
+<hr>
 
 ```python
 st.haitch(
@@ -293,7 +331,8 @@ st.haitch(
 ) -> st.ZSet[T]
 ```
 
-Used internally by `st.distinct(...)`, efficiently watches for change of sign in counts.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+haitch%28%22&type=code) Used internally by `st.distinct(...)`, efficiently watches for change of sign in counts.
+
 
 ## Delay/Differentiate/Integrate
 
@@ -303,7 +342,9 @@ st.delay(
 ) -> T
 ```
 
-Returns the previous value it was called with, see [reference page]({{< ref "/docs/internals/how-it-works.md" >}}).
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+delay%28%22&type=code) Returns the previous value it was called with, see [reference page]({{< ref "/docs/internals/how-it-works.md" >}}#delays).
+
+<hr>
 
 ```python
 st.delay_indexed(
@@ -313,7 +354,9 @@ st.delay_indexed(
 ) -> st.ZSet[T]
 ```
 
-Returns the previous value it was called with, with indexes.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+delay_indexed%28%22&type=code) Returns the previous value it was called with, with indexes.
+
+<hr>
 
 ```python
 st.differentiate(
@@ -321,7 +364,9 @@ st.differentiate(
 ) -> TAddAndNegable
 ```
 
-See [reference page]({{< ref "/docs/internals/how-it-works.md" >}}).
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+differentiate%28%22&type=code) Differentiates input values over time. See [reference page]({{< ref "/docs/internals/how-it-works.md" >}}#differentiation).
+
+<hr>
 
 ```python
 st.integrate(
@@ -329,15 +374,9 @@ st.integrate(
 ) -> TAddable
 ```
 
-See [reference page]({{< ref "/docs/internals/how-it-works.md" >}}).
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+integrate%28%22&type=code) Integrates input values over time. See [reference page]({{< ref "/docs/internals/how-it-works.md" >}}#integration).
 
-```python
-st.integrate_delay(
-    a: TAddable,
-) -> TAddable
-```
-
-See [reference page]({{< ref "/docs/internals/how-it-works.md" >}}).
+<hr>
 
 ```python
 st.integrate_indexed(
@@ -347,9 +386,21 @@ st.integrate_indexed(
 ) -> st.ZSet[T]
 ```
 
-See [reference page]({{< ref "/docs/internals/how-it-works.md" >}}).
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+integrate_indexed%28%22&type=code) Integrates input values over time, adds indexes to the delay node. See [reference page]({{< ref "/docs/internals/how-it-works.md" >}}#integration).
 
-# Compile
+<hr>
+
+```python
+st.integrate_delay(
+    a: TAddable,
+) -> TAddable
+```
+
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+integrate_delay%28%22&type=code) Integrates input values over time, returns the previous value. See [reference page]({{< ref "/docs/internals/how-it-works.md" >}}#integration).
+
+## Compile
+
+<hr>
 
 ```python
 st.compile(
@@ -357,7 +408,9 @@ st.compile(
 ) -> st.Graph[Any, Any]
 ```
 
-Compile a query function to a graph.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+compile%28%22&type=code) Compile a query function to a graph.
+
+<hr>
 
 ```python
 st.compile_lazy(
@@ -365,7 +418,9 @@ st.compile_lazy(
 ) -> Callable[[], st.Graph[Any, Any]]
 ```
 
-Returns a function with no arguments that compiles the graph, caches it and returns it.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+compile_lazy%28%22&type=code) Returns a function with no arguments that compiles the graph, caches it and returns it.
+
+<hr>
 
 ```python
 st.compile_typeof(
@@ -373,14 +428,18 @@ st.compile_typeof(
 ) -> type[T]
 ```
 
-Get the resolved type of `t` at query compile time.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22compile_typeof%22&type=code) Get the resolved type of `t` at query compile time.
+
+<hr>
 
 ```python
 with st.at_compile_time:
     ...
 ```
 
-Run this code block at query compile time.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22at_complie_time%22&type=code) Run this code block at query compile time.
+
+<hr>
 
 # Run
 
@@ -393,7 +452,9 @@ st.iteration(
 ) -> tuple[Any, ...]
 ```
 
-Run a single iteration of a graph, returning resultant changes.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+iteration%28%22&type=code) Run a single iteration of a graph, returning resultant changes.
+
+<hr>
 
 ```python
 st.actions(
@@ -402,9 +463,11 @@ st.actions(
 ) -> Any
 ```
 
-Return a tuple of helpers to insert, remove, replace. Examples dotted around the docs.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+actions%28%22&type=code) Return a tuple of helpers to insert, remove, replace. Examples dotted around the docs.
 
-# Indexes
+<hr>
+
+## Indexes
 
 ```python
 st.pick_index(
@@ -414,7 +477,9 @@ st.pick_index(
 ) -> st.Index[T, K]
 ```
 
-Pick an index of `t`. The index key should be indexable:
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+pick_index%28%22&type=code) Pick an index of `t`. The index key should be indexable:
+
+<hr>
 
 ```python
 IndexableAtom = str | int | float | bool | None | date | datetime | UUID
@@ -423,6 +488,8 @@ Indexable = IndexableAtom | tuple[IndexableAtom, ...]
 
 Optionally, a boolean for ascending can be passed in, this is equivalent to SQL's `ASC`/`DESC`. If the key is `tuple[IndexableAtom, ...]`, `ascending` must be a tuple of bools of the same length.
 
+<hr>
+
 ```python
 st.pick_identity(
     t: type[KAtom],
@@ -430,25 +497,31 @@ st.pick_identity(
 ) -> st.Index[KAtom, KAtom]
 ```
 
-Pick an index of the value itself.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+pick_identity%28%22&type=code) Pick an index of the value itself.
 
-# Database Connections
+<hr>
+
+## Database Connections
 
 ```python
 with st.connection_postgres(db_url: str) as conn:
     ...
 ```
 
-Context manager for a Postgres connection.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+connection_postgres%28%22&type=code) Context manager for a Postgres connection.
+
+<hr>
 
 ```python
 with st.connection_sqlite(db_url: pathlib.Path) as conn:
     ...
 ```
 
-Context manager for a SQLite connection.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+connection_sqlite%28%22&type=code) Context manager for a SQLite connection.
 
-# Helpers
+<hr>
+
+## Helpers
 
 ```python
 st.annotate_zset(
@@ -456,7 +529,9 @@ st.annotate_zset(
 ) -> tuple[pydantic.Validator, ...]
 ```
 
-Use when it is required to serialize a `ZSetPython` to a store, example:
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+annotate_zset%28%22&type=code) Use when it is required to serialize a `ZSetPython` to a store, example:
+
+<hr>
 
 ```python
 class A(st.Data):
@@ -466,6 +541,8 @@ class A(st.Data):
 
 _At some point, the magic `pydantic` method will be added to make this redundant._
 
+<hr>
+
 ```python
 st.batched(
     iterable: list[T],
@@ -473,7 +550,9 @@ st.batched(
 ) -> Iterator[list[T]]
 ```
 
-See [itertools docs](https://docs.python.org/3/library/itertools.html#itertools-recipes).
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+batched%28%22&type=code) See [itertools docs](https://docs.python.org/3/library/itertools.html#itertools-recipes).
+
+<hr>
 
 ```python
 st.write_png(
@@ -484,4 +563,4 @@ st.write_png(
 ) -> NoneType
 ```
 
-Write a graph to a `.png` file using `dot`.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+write_png%28%22&type=code) Write a graph to a `.png` file using `dot`

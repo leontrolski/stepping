@@ -45,14 +45,21 @@ for name in sorted(dir(stepping)):
     ]:
         sig_str = sig_str.replace(a, b)
 
-    by_module[f.__module__].append(sig_str)
+    # by_module[f.__module__].append(sig_str)
+    import inspect
+    # lineno = inspect.getlineno(f)
+    _, lineno = inspect.findsource(f)
+    filename = f.__module__.replace(".", "/") + ".py"
+    s = f"[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+{f.__name__}%28%22&type=code)"
+    # s = f"[[source]](https://github.com/leontrolski/stepping/blob/fedca46b2f/src/{filename}#L{lineno})"
+    print(s)
 
-for module_name, sig_strs in sorted(by_module.items()):
-    print("## " + module_name)
-    print()
-    for sig_str in sig_strs:
-        print("```python")
-        print(sig_str)
-        # print("\n".join("    " + line for line in sig_str.splitlines()))
-        print("```")
-        print()
+# for module_name, sig_strs in sorted(by_module.items()):
+#     print("## " + module_name)
+#     print()
+#     for sig_str in sig_strs:
+#         print("```python")
+#         print(sig_str)
+#         # print("\n".join("    " + line for line in sig_str.splitlines()))
+#         print("```")
+#         print()

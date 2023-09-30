@@ -202,9 +202,55 @@ st.Graph[
 ]
 ```
 
-_`Aθ` is just a collection of arguments with length θ._
+_`Aθ` is just a collection of arguments with length θ -- waiting on mypy support for `TypeVarTuple` over here._
 
-Let's look at a more interesting graph and write a `.png` file with a diagram of it:
+The internal structure of the graph from above is:
+
+```python
+Graph(
+    vertices=[
+        t:input_0 OperatorKind.identity(ZSet[str]) -> ZSet[str],
+        t:delayed OperatorKind.delay(ZSet[str]) -> ZSet[str]],
+    input=[
+        (t:input_0 OperatorKind.identity(ZSet[str]) -> ZSet[str], 0)
+    ],
+    internal={
+        (
+            t:input_0 OperatorKind.identity(ZSet[str]) -> ZSet[str],
+            (t:delayed OperatorKind.delay(ZSet[str]) -> ZSet[str], 0)
+        )
+    },
+    output=[
+        t:delayed OperatorKind.delay(ZSet[str]) -> ZSet[str]
+    ],
+    run_no_output=[]
+)
+```
+
+The graph has a:
+
+- List of all the vertices within it.
+- List of all the inputs. These are a tuple of a `Vertex` and `0` for the first argument, `1` for the second argument (in the case of binary vertices).
+- Set of all the internal edges. These are each a tuple of a `Vertex`, pointing to a (vertex, `0|1`) tuple.
+- List of output vertices.
+- List of vertices that we want to run, but we don't use in the output.
+
+A vertex has a fairly simple type, there are unary and binary ones, let's look at a unary one:
+
+```python
+class VertexUnary(Generic[T, V]):
+    t: type[T]
+    v: type[V]
+    operator_kind: OperatorKind
+    path: Path
+    f: Callable[[T], V]
+```
+
+`t` is the input type, `v` is the output type, operator kind is `add`, `delay`, `filter` etc, path is effectively the unique name of the vertex, f is the function that it runs.
+
+<br>
+
+Now let's look at a more interesting graph and write a `.png` file with a diagram of it:
 
 ```python
 def query_graph(a: st.ZSet[A], b: st.ZSet[B]) -> st.ZSet[st.Pair[A, B]]:
@@ -467,7 +513,7 @@ Indexes are a generic:
 Index[T, K]
 ```
 
-Where `T` the same `T` from `ZSet[T]` and `K` is an `Indexable` key of `T` (including tuples of many keys). Indexes also have an `ascending=True|False` for each of the key(s).
+Where `T` is the same `T` from `ZSet[T]` and `K` is an [`Indexable`](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22Indexable+%22&type=code) key of `T` (including tuples of many keys). Indexes also have an `ascending=True|False` for each of the key(s).
 
 Indexes are used to efficiently implement many things in stepping: joins, limits, grouping, distinct.
 
