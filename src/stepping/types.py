@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from itertools import islice
@@ -8,6 +9,7 @@ from typing import (
     Any,
     Callable,
     Generic,
+    Iterable,
     Iterator,
     Protocol,
     Self,
@@ -91,11 +93,10 @@ class ZSet(Protocol[T]):
     iter_by_index: _IterByIndex[T]
 
 class Store(Protocol):
-    @property
-    def _current(self) -> dict[graph.VertexUnaryDelay[Any, Any], ZSet[Any]]: ...
-    def get(self, vertex: graph.VertexUnaryDelay[Any, Any]) -> ZSet[Any]: ...
-    def set(self, vertex: graph.VertexUnaryDelay[Any, Any], value: Any) -> None: ...
-    def inc(self, flush: bool) -> None: ...
+    def get(self, vertex: graph.VertexUnaryDelay[Any, Any], time: Time | None) -> ZSet[Any]: ...
+    def set(self, vertex: graph.VertexUnaryDelay[Any, Any], value: Any, time: Time) -> None: ...
+    def inc(self, time: Time) -> None: ...
+    def flush(self, vertices: Iterable[graph.VertexUnaryDelay[Any, Any]], time: Time) -> None: ...
 
 @runtime_checkable
 class Transformer(Protocol):
@@ -191,6 +192,17 @@ class Grouped(Generic[T, K]):
 
     def keys(self) -> Set[K]:
         return set(self._data.keys())
+
+
+@dataclass(frozen=True)
+class Time:
+    input_time: int = 0  # this set of inputs' time
+    frontier: int = 0  # only read changes when written up to this time
+    # Where
+    # - True is flush every time we call `Store.set(...)`
+    # - False is flush every time we call `Store.inc(...)`
+    # - None is never flush
+    flush_every_set: bool | None = False
 
 
 @dataclass

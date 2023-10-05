@@ -56,7 +56,6 @@ def connection(db_url: str) -> Iterator[generic.ConnPostgres]:
     if _pool is None:
         _pool = ConnectionPool(db_url)
     with _pool.connection() as conn:
-        conn.isolation_level = psycopg.IsolationLevel.SERIALIZABLE
         yield conn
 
 
@@ -72,7 +71,7 @@ def force_index_usage(cur: generic.CurPostgres) -> Iterator[None]:
 
 
 def _create_data_table(z_sql: ZSetPostgres[Any]) -> None:
-    table_name = z_sql.table.name
+    table_name = z_sql.table_name
     # Do outside of a TRANSACTION
     z_sql.cur.connection.execute(
         f"""
@@ -88,9 +87,19 @@ def _create_data_table(z_sql: ZSetPostgres[Any]) -> None:
         qry = prefix + "(" + ", ".join(to_expressions(i, include_asc=True)) + ")"
         z_sql.cur.connection.execute(qry)
 
+    z_sql.cur.connection.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS last_update (
+            table_name TEXT PRIMARY KEY UNIQUE,
+            t BIGINT NOT NULL
+        )
+        """
+    )
+    z_sql.cur.connection.execute(f"INSERT INTO last_update VALUES ('{table_name}', 0)")
+
 
 def _upsert(z_sql: ZSetPostgres[TSerializable], z: ZSet[TSerializable]) -> None:
-    table_name = z_sql.table.name
+    table_name = z_sql.table_name
     values: list[dict[Any, Any]] = [
         dict(
             identity=make_identity(v),
@@ -130,7 +139,7 @@ def _get_all(
     z_sql: ZSetPostgres[TSerializable],
     match: frozenset[TSerializable] | MatchAll = MATCH_ALL,
 ) -> Iterator[tuple[TSerializable, int]]:
-    table_name = z_sql.table.name
+    table_name = z_sql.table_name
 
     if not isinstance(match, MatchAll):
         match_identities = [make_identity(m) for m in match]
@@ -149,7 +158,7 @@ def _get_by_key(
     match_keys: frozenset[K] | MatchAll,
 ) -> Iterator[tuple[K, TSerializable, int]]:
     is_tuple = is_type(index.k, tuple)
-    table_name = z_sql.table.name
+    table_name = z_sql.table_name
 
     fields_expressions = to_expressions(index)
     key_expression = ", ".join(fields_expressions)

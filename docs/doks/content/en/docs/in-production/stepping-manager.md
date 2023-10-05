@@ -25,3 +25,4 @@ It's aim is to help with deploying and migrating multiple queries in production.
 - We should version control a dump of the whole graph. This should be a `.py` file, but with no dataclasses, only atoms (int, str, etc) - see `isjsonschemasubset`.
 - Handle schema changes by replaying data/connecting to old sources.
 - A worker should expose the diff between the time of the most recent event and most recently published, or some vaguely Spanner-like approach to consistency.
+- There should be some gracefull error handling for queries.

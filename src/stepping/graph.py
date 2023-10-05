@@ -175,6 +175,10 @@ class Graph(Generic[T, V]):
                     f"end.{'u' if i == 1 else 't'} {end.path}:\n{end_type}"
                 )
 
+    @property
+    def delay_vertices(self) -> list[VertexUnaryDelay[Any, Any]]:
+        return [v for v in self.vertices if isinstance(v, VertexUnaryDelay)]
+
     def pformat(self) -> str:
         input_str = "\n".join(f"  {vertex} [{i}]" for vertex, i in self.input)
         internal_str = "\n".join(

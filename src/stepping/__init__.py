@@ -39,7 +39,6 @@ from stepping.operators.linear import add3 as add3
 from stepping.operators.linear import delay as delay
 from stepping.operators.linear import delay_indexed as delay_indexed
 from stepping.operators.linear import differentiate as differentiate
-from stepping.operators.linear import ensure_python_zset as ensure_python_zset
 from stepping.operators.linear import filter as filter
 from stepping.operators.linear import haitch as haitch
 from stepping.operators.linear import identity_print as identity_print
@@ -63,6 +62,7 @@ from stepping.types import Data as Data
 from stepping.types import Empty as Empty
 from stepping.types import Pair as Pair
 from stepping.types import Store as Store
+from stepping.types import Time as Time
 from stepping.types import ZSet as ZSet
 from stepping.types import batched as batched
 from stepping.types import pick_identity as pick_identity

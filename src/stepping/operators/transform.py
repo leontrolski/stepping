@@ -24,6 +24,7 @@ from stepping.types import (
     K,
     Store,
     T,
+    Time,
     U,
     V,
     X,
@@ -374,14 +375,13 @@ class CacheTransformer(Generic[T]):
 
     def transform(self, g: Graph[Any, Any]) -> Graph[Any, Any]:
         g = deepcopy(g)
-        vertices_delay = [v for v in g.vertices if isinstance(v, VertexUnaryDelay)]
-        if len(vertices_delay) != 1:
+        if len(g.delay_vertices) != 1:
             raise RuntimeError("Graph contains more than one delay vertex")
         if self.cache.vertex_delay is not None and hash(
             self.cache.vertex_delay
-        ) != hash(vertices_delay[0]):
+        ) != hash(g.delay_vertices[0]):
             raise RuntimeError("Cache already has a different delay vertex registered")
-        self.cache.vertex_delay = vertices_delay[0]
+        self.cache.vertex_delay = g.delay_vertices[0]
         g.run_no_output.append(self.cache.vertex_delay)
         return g
 
@@ -393,7 +393,7 @@ class Cache(Generic[T]):
                 "Cache is missing delay vertex, "
                 "probably compile the func referencing the cache"
             )
-        zset = store.get(self.vertex_delay)
+        zset = store.get(self.vertex_delay, None)
         return zset
 
     # Used at func compile time

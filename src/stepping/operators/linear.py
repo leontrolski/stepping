@@ -146,11 +146,3 @@ def join(
 @builder.vertex(OperatorKind.first_n)
 def first_n(z: ZSet[T], *, index: Index[T, K], n: int) -> ZSet[T]:
     return functions.first_n(z, index, n)
-
-
-@builder.vertex(OperatorKind.identity_dont_remove)
-def ensure_python_zset(a: ZSet[T]) -> ZSet[T]:
-    # We could move this to `run`
-    if isinstance(a, ZSetSQL):
-        return a.to_python()
-    return a

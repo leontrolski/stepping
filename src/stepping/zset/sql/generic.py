@@ -1,21 +1,21 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
-from typing import Any, Iterator, Self, get_args
+from typing import Any, Callable, Iterator, Self, get_args
 
 import psycopg
 
 from stepping.types import (
-    EMPTY,
     MATCH_ALL,
-    Empty,
     Index,
     Indexable,
     IndexableAtom,
     K,
     MatchAll,
+    Time,
     TSerializable,
     ZSet,
     ZSetBodge,
@@ -31,32 +31,44 @@ CurPostgres = psycopg.Cursor[Any]
 CurSQLite = sqlite3.Cursor
 Cur = CurPostgres | CurSQLite
 
-
-@dataclass(frozen=True)
-class Table:
-    name: str
+MAX_SLEEP_SECS = 5.0  # TODO: change me!
+# 1.3 means this grows exponentially, but fairly slowly
+SLEEP_SECS: list[float] = [0.00001 * 1.3**n for n in range(100)]
+SLEEP_SECS = [sleep_secs for sleep_secs in SLEEP_SECS if sleep_secs <= MAX_SLEEP_SECS]
 
 
 @dataclass(eq=False)
 class ZSetSQL(ZSetBodge[TSerializable]):
     cur: Cur
     t: type[TSerializable]
-    table: Table
+    table_name: str
     indexes: tuple[Index[TSerializable, Any], ...]
     changes: ZSetPython[TSerializable] = field(default_factory=ZSetPython)
     is_negative: bool = False
+    register: Callable[[Self], None] = lambda _: None
 
-    def flush_changes(self) -> None:
-        if self.changes.empty():
-            return
-        self.upsert(self.changes)
-        self.changes = ZSetPython[Any]()
+    def __post_init__(self) -> None:
+        self.register(self)
 
     def __eq__(self, other: object) -> bool:
         return self.to_python() == other
 
     def to_python(self) -> ZSetPython[TSerializable]:
         return ZSetPython(self.iter())
+
+    def wait_til_time(self, frontier: int) -> None:
+        qry = f"SELECT t = {frontier} FROM last_update WHERE table_name = '{self.table_name}'"
+        for sleep_secs in SLEEP_SECS:
+            [(reached_time,)] = self.cur.execute(qry)
+            if reached_time:
+                return
+            time.sleep(sleep_secs)
+        else:
+            raise RuntimeError(f"No changes committed from frontier: {frontier}")
+
+    def set_last_update_time(self, t: int) -> None:
+        qry = f"UPDATE last_update SET t = {t} WHERE table_name = '{self.table_name}'"
+        self.cur.execute(qry)
 
     # ZSet methods
 
@@ -161,21 +173,21 @@ def interleave_changes(
     b_rows = sorted(b_rows, key=lambda kvc: kvc[0])  # type: ignore
 
     b_iterator: Iterator[tuple[K, TSerializable, int]] = iter(b_rows)
-    a = next(a_iterator, EMPTY)
-    b = next(b_iterator, EMPTY)
+    a = next(a_iterator, None)
+    b = next(b_iterator, None)
 
-    while not (isinstance(a, Empty) and isinstance(b, Empty)):
-        if (not isinstance(a, Empty)) and (isinstance(b, Empty) or a[0] <= b[0]):  # type: ignore[operator]
+    while not (a is None and b is None):
+        if (a is not None) and (b is None or a[0] <= b[0]):  # type: ignore[operator]
             a_key, a_value, a_count = a
             # we yield all the `a`s in a group first
             if a_key in b_counts and a_value in b_counts[a_key]:
                 a_count = b_counts[a_key].pop(a_value) + a_count
             if a_count != 0:
                 yield a_key, a_value, a_count
-            a = next(a_iterator, EMPTY)
+            a = next(a_iterator, None)
         else:
-            assert not isinstance(b, Empty)
+            assert not b is None
             b_key, b_value, b_count = b
             if b_value in b_counts[b_key]:
                 yield b_key, b_value, b_count
-            b = next(b_iterator, EMPTY)
+            b = next(b_iterator, None)

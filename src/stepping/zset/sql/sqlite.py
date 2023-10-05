@@ -49,7 +49,7 @@ class ZSetSQLite(generic.ZSetSQL[TSerializable]):
 
 @contextmanager
 def connection(db_url: pathlib.Path) -> Iterator[generic.ConnSQLite]:
-    conn = sqlite3.connect(str(db_url.absolute()), isolation_level="IMMEDIATE")
+    conn = sqlite3.connect(str(db_url.absolute()))
     try:
         yield conn
     except Exception as e:
@@ -59,14 +59,14 @@ def connection(db_url: pathlib.Path) -> Iterator[generic.ConnSQLite]:
 
 
 def _create_data_table(z_sql: ZSetSQLite[Any]) -> None:
-    table_name = z_sql.table.name
+    table_name = z_sql.table_name
     # Do outside of a TRANSACTION
     z_sql.cur.connection.execute(
         f"""
         CREATE TABLE {table_name} (
             identity TEXT PRIMARY KEY,
             data TEXT NOT NULL,  -- JSON
-            c INTEGER NOT NULL
+            c BIGINT NOT NULL
         )
         """
     )
@@ -75,9 +75,19 @@ def _create_data_table(z_sql: ZSetSQLite[Any]) -> None:
         qry = prefix + "(" + ", ".join(to_expressions(i, include_asc=True)) + ")"
         z_sql.cur.connection.execute(qry)
 
+    z_sql.cur.connection.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS last_update (
+            table_name TEXT PRIMARY KEY UNIQUE,
+            t INTEGER NOT NULL
+        )
+        """
+    )
+    z_sql.cur.connection.execute(f"INSERT INTO last_update VALUES ('{table_name}', 0)")
+
 
 def _upsert(z_sql: ZSetSQLite[TSerializable], z: ZSet[TSerializable]) -> None:
-    table_name = z_sql.table.name
+    table_name = z_sql.table_name
     values: list[dict[Any, Any]] = [
         dict(
             identity=make_identity(v),
@@ -116,7 +126,7 @@ def _get_all(
     z_sql: ZSetSQLite[TSerializable],
     match: frozenset[TSerializable] | MatchAll = MATCH_ALL,
 ) -> Iterator[tuple[TSerializable, int]]:
-    table_name = z_sql.table.name
+    table_name = z_sql.table_name
 
     if not isinstance(match, MatchAll):
         match_identities = [make_identity(m) for m in match]
@@ -135,7 +145,7 @@ def _get_by_key(
     match_keys: frozenset[K] | MatchAll,
 ) -> Iterator[tuple[K, TSerializable, int]]:
     is_tuple = is_type(index.k, tuple)
-    table_name = z_sql.table.name
+    table_name = z_sql.table_name
 
     fields_expressions = to_expressions(index)
     key_expression = ", ".join(fields_expressions)

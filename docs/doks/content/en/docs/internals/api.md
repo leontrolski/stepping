@@ -56,16 +56,6 @@ st.identity_print(
 
 [[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+identity_print%28%22&type=code) Prints `a`, then returns it.
 
-<hr>
-
-```python
-st.ensure_python_zset(
-    a: st.ZSet[T],
-) -> st.ZSet[T]
-```
-
-[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+ensure_python_zset%28%22&type=code) Converts `ZSetSQl` -> `ZSetPython`
-
 
 ## Day to day
 

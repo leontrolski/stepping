@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import subprocess
-from dataclasses import dataclass
 from datetime import date, datetime, timezone
-
-import pytest
+from typing import Any
 
 from stepping.types import Data, SerializableObject, ZSet, pick_identity, pick_index
 from stepping.zset import functions
 from stepping.zset.python import ZSetPython
 from stepping.zset.sql import generic, postgres
+
+
+def _flush(z: generic.ZSetSQL[Any]) -> None:
+    z.upsert(z.changes)
+    z.changes = ZSetPython[Any]()
 
 
 def dump_schema(conn: generic.ConnPostgres) -> str:
@@ -23,7 +26,7 @@ def dump_schema(conn: generic.ConnPostgres) -> str:
 def test_create_table(postgres_conn: generic.ConnPostgres) -> None:
     cur = postgres_conn.cursor()
     ix = pick_identity(int)
-    z = postgres.ZSetPostgres[int](cur, int, generic.Table("foo"), (ix,))
+    z = postgres.ZSetPostgres[int](cur, int, "foo", (ix,))
 
 
 class Animal(Data):
@@ -41,12 +44,12 @@ def test_typing(postgres_conn: generic.ConnPostgres) -> None:
         age=38,
         created=datetime(2022, 1, 1, tzinfo=timezone.utc),
     )
-    z: ZSet[int] = postgres.ZSetPostgres[int](cur, int, generic.Table("foo"), ())
+    z: ZSet[int] = postgres.ZSetPostgres[int](cur, int, "foo", ())
 
 
 def test_write_simple_int(postgres_conn: generic.ConnPostgres) -> None:
     cur = postgres_conn.cursor()
-    z = postgres.ZSetPostgres(cur, int, generic.Table("foo"), ())
+    z = postgres.ZSetPostgres(cur, int, "foo", ())
     z.create_data_table()
     changes = ZSetPython({42: 1, 56: 2, 78: -1})
     z += changes
@@ -54,7 +57,7 @@ def test_write_simple_int(postgres_conn: generic.ConnPostgres) -> None:
     actual = list(z.iter(frozenset((42, 78))))
     assert actual == [(42, 1), (78, -1)]
 
-    z.flush_changes()
+    _flush(z)
     assert z.to_python() == changes
 
     actual = list(z.iter(frozenset((42, 78))))
@@ -63,11 +66,11 @@ def test_write_simple_int(postgres_conn: generic.ConnPostgres) -> None:
 
 def test_write_simple_int_with_index(postgres_conn: generic.ConnPostgres) -> None:
     cur = postgres_conn.cursor()
-    z = postgres.ZSetPostgres(cur, int, generic.Table("foo"), (pick_identity(int),))
+    z = postgres.ZSetPostgres(cur, int, "foo", (pick_identity(int),))
     z.create_data_table()
     changes = ZSetPython({42: 1, 56: 2})
     z += changes
-    z.flush_changes()
+    _flush(z)
     assert z.to_python() == changes
 
     postgres_conn.commit()
@@ -80,11 +83,11 @@ def test_write_simple_int_with_index(postgres_conn: generic.ConnPostgres) -> Non
 
 def test_write_simple_date(postgres_conn: generic.ConnPostgres) -> None:
     cur = postgres_conn.cursor()
-    z = postgres.ZSetPostgres(cur, date, generic.Table("foo"), ())
+    z = postgres.ZSetPostgres(cur, date, "foo", ())
     z.create_data_table()
     changes = ZSetPython({date(2021, 1, 3): 1, date(2021, 1, 4): -2})
     z += changes
-    z.flush_changes()
+    _flush(z)
     assert z.to_python() == changes
 
 
@@ -93,13 +96,13 @@ def test_write_simple_date_with_index(postgres_conn: generic.ConnPostgres) -> No
     z = postgres.ZSetPostgres(
         cur,
         date,
-        generic.Table("foo"),
+        "foo",
         (pick_identity(date),),
     )
     z.create_data_table()
     changes = ZSetPython({date(2021, 1, 3): 1, date(2021, 1, 4): -2})
     z += changes
-    z.flush_changes()
+    _flush(z)
     assert z.to_python() == changes
 
     postgres_conn.commit()
@@ -110,7 +113,7 @@ def test_write_simple_date_with_index(postgres_conn: generic.ConnPostgres) -> No
 
 def test_write_complex(postgres_conn: generic.ConnPostgres) -> None:
     cur = postgres_conn.cursor()
-    z = postgres.ZSetPostgres(cur, Animal, generic.Table("foo"), ())
+    z = postgres.ZSetPostgres(cur, Animal, "foo", ())
     z.create_data_table()
 
     animal = Animal(
@@ -121,13 +124,13 @@ def test_write_complex(postgres_conn: generic.ConnPostgres) -> None:
     )
     changes = ZSetPython({animal: 2})
     z += changes
-    z.flush_changes()
+    _flush(z)
     assert z.to_python() == changes
 
 
 def test_write_complex_update(postgres_conn: generic.ConnPostgres) -> None:
     cur = postgres_conn.cursor()
-    z = postgres.ZSetPostgres(cur, Animal, generic.Table("foo"), ())
+    z = postgres.ZSetPostgres(cur, Animal, "foo", ())
     z.create_data_table()
 
     animal = Animal(
@@ -145,12 +148,12 @@ def test_write_complex_update(postgres_conn: generic.ConnPostgres) -> None:
 
     changes = ZSetPython({animal: 1})
     z += changes
-    z.flush_changes()
+    _flush(z)
     assert z.to_python() == changes
 
     changes = ZSetPython({animal: -1, animal_new: 1})
     z += changes
-    z.flush_changes()
+    _flush(z)
 
     expected = ZSetPython({animal_new: 1})
     assert z.to_python() == expected
@@ -179,7 +182,7 @@ def test_schema_made_and_used(postgres_conn: generic.ConnPostgres) -> None:
     z = postgres.ZSetPostgres(
         cur,
         Foo,
-        generic.Table("foo"),
+        "foo",
         (ix_namely, ix_name_and_age, ix_parent_bingo, ix_created),
     )
     z.create_data_table()
@@ -200,7 +203,7 @@ def test_schema_made_and_used(postgres_conn: generic.ConnPostgres) -> None:
         }
     )
     z += changes
-    z.flush_changes()
+    _flush(z)
 
     actual = list(z.iter(frozenset((first_foo,))))
     assert actual == [(first_foo, 1)]

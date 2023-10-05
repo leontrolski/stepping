@@ -56,8 +56,7 @@ def test_definition_3_27(conns: Conns, store_maker: StoreMaker) -> None:
 
 def _f_test_definition_3_25(a: ZSet[int]) -> ZSet[int]:
     differentiated = st.differentiate(a)
-    differentiated2 = st.ensure_python_zset(differentiated)
-    return differentiated2
+    return differentiated
 
 
 @pytest.mark.parametrize("store_maker", store_makers, ids=store_ids)
@@ -76,8 +75,7 @@ def test_definition_3_25(conns: Conns, store_maker: StoreMaker) -> None:
 def _f_test_theorem_3_30_a(a: ZSet[int]) -> ZSet[int]:
     integrated = st.integrate(a)
     differentiated = st.differentiate(integrated)
-    differentiated2 = st.ensure_python_zset(differentiated)
-    return differentiated2
+    return differentiated
 
 
 def _f_test_theorem_3_30_b(a: ZSet[int]) -> ZSet[int]:
@@ -114,8 +112,7 @@ def test_theorem_3_30_b(conns: Conns, store_maker: StoreMaker) -> None:
 
 def _f_test_integrate_and_delay(a: ZSet[int]) -> ZSet[int]:
     integrated = st.integrate_delay(a)
-    integrated2 = st.ensure_python_zset(integrated)
-    return integrated2
+    return integrated
 
 
 @pytest.mark.parametrize("store_maker", store_makers, ids=store_ids)

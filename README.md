@@ -23,15 +23,33 @@ mypy src tests
 
 ## Todos
 
-- Docs.
-- Work out how to parallelize.
-- Write everything up, email the dbsp people from the original paper. In particular, ask question about why the incremental recursive stuff is different from the paper.
 - See suggestions in `performance.md`.
+    - Can SQLite and postgres actually index bytes? Can we save space only putting the data in the index.
+    - Can we `SELECT value FROM json_array_elements_text(...)` with bytes.
+    - Make SQL ZSets work with JSON bytes.
+    - Write `ormsgpack` wrapper.
+    - Can `pick_index` become simpler/get removed, can we remove `WithLen` and friends?
+    - Read off of read replica?
+- Write up parallelize docs.
+    - Talk a lot about early commit mode and pitfalls.
+    - `time` as a `SEQUENCE?` - would come as part of stepping manager.
+    - Future? Need to think hard about how one could allow parallelism where you can guaranteee no phanton rows.
+- Make the graph a simple introspectable thing.
+    - Use paths as names.
+    - Make the Path contain the module names.
+    - Make vertexes immutable, run `mypy`, fix.
+    - Remember to update docs.
+- `s/INT/BIGINT` for times.
+- Make diffs nice.
+- Replace operator kind with `normal`.
+- Write everything up, email the dbsp people from the original paper. In particular, ask question about why the incremental recursive stuff is different from the paper.
+- Python 3.12. Use build in batched. Can we use the new `Unpack` syntax for nicer action types?
 - Look at 11.8 "Window aggregates"
 - Replace `integrate_delay` with a nice transform. Similarly, transform shared delays.
 - Test arbitrary depth grouped nesting and joining in a grouped setting (Does this _need_ doing?).
 - Replace `annotate_zset` with `__get_pydantic_core_schema__`.
-- Revisit `st.compile(...)`
+- Revisit `st.compile(...)`.
+- Decide whether to make `...SQL` classes protocols.
 
 # Uploading to Pypi
 
