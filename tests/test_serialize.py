@@ -16,7 +16,7 @@ la = ZoneInfo("America/Los_Angeles")
 class Bar(types.Data):
     x: int
     y: datetime | None
-    zs: list[bool]
+    zs: tuple[bool, ...]
 
 
 @dataclass
@@ -43,7 +43,7 @@ class Foo(types.Data):
     a: date
     b: Annotated[datetime, "oi"]
     bar: Bar
-    bars: list[Bar]
+    bars: tuple[Bar, ...]
     xs: tuple[tuple[str, ...], ...]
     coord: tuple[float, float]
     id: UUID
@@ -56,20 +56,20 @@ foo = Foo(
     bar=Bar(
         x=5,
         y=datetime(1989, 12, 30, tzinfo=la),
-        zs=[True, False],
+        zs=(True, False),
     ),
-    bars=[
+    bars=(
         Bar(
             x=6,
             y=None,
-            zs=[True],
+            zs=(True,),
         ),
         Bar(
             x=7,
             y=datetime(1989, 12, 30),
-            zs=[False],
+            zs=(False,),
         ),
-    ],
+    ),
     xs=(("str-1", "str-2"), ("str-3",)),
     coord=(1.3, 1.8),
     id=uuid4(),

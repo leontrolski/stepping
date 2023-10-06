@@ -30,5 +30,6 @@ _More to follow..._
   - Store as JSON Arrays not Objects and use the schema for keys.
   - Compress the JSON. In SQLite, it is possible to do `conn.create_function("f", 1, f, deterministic=True)`, compression with `zstandard.ZstdCompressionDict(json.dumps(Resolved.model_json_schema()).encode())` compresses raw JSON by around half.
 - Note that non-JSON options would require writing extra columns for indexing.
+- How does performance look with read replica(s)?
 - Look into doing something like [pydantic-core](https://github.com/pydantic/pydantic-core) and rewriting hot code in Rust.
-- Build some entirely different storage layer, eg. using something new and trendy like [sled](https://github.com/spacejam/sled).
+- Build some entirely different storage layer, eg. using something new and trendy like [sled](https://github.com/spacejam/sled), or less trendy, like `lmdb`.
