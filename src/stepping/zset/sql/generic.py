@@ -148,16 +148,60 @@ def split_index_tuple_types(
         assert len(inner_ts) == len(fields)
         assert len(ascending) == len(fields)
         for inner_fields, inner_t, asc in zip(fields, inner_ts, ascending):
-            yield from split_index_tuple_types(inner_fields, asc, inner_t)
-    elif is_type(t, tuple):
-        inner_ts = get_args(t)
-        assert isinstance(ascending, tuple)
-        assert len(ascending) == len(inner_ts)
-        for i, [inner_t, asc] in enumerate(zip(inner_ts, ascending)):
-            yield f"{i}" if fields == "" else f"{fields}.{i}", inner_t, asc
+            assert isinstance(inner_fields, str)
+            assert isinstance(asc, bool)
+            yield inner_fields, inner_t, asc
     else:
         assert isinstance(ascending, bool)
         yield fields, t, ascending  # type: ignore
+
+
+@dataclass
+class IndexInfo:
+    name: str
+    columns: list[str]
+    columns_asc: list[str]
+    columns_types: list[str]
+
+
+TypeDBTypeMap = dict[type[IndexableAtom], str]
+
+
+def index_info(type_map: TypeDBTypeMap, index: Index[Any, Any]) -> IndexInfo:
+    index_name = "identity"
+    if isinstance(index.fields, str) and index.fields:
+        index_name = index.fields
+    if isinstance(index.fields, tuple):
+        index_name = "__".join(index.fields)
+    info = IndexInfo(index_name.replace(".", "_"), [], [], [])
+
+    if isinstance(index.fields, tuple):
+        fields = index.fields
+        assert is_type(index.k, tuple)
+        ks = get_args(index.k)
+        assert isinstance(index.ascending, tuple)
+        ascendings = index.ascending
+    else:
+        fields = (index.fields,)
+        ks = (index.k,)
+        assert isinstance(index.ascending, bool)
+        ascendings = (index.ascending,)
+        if not index.fields:
+            fields = ("identity",)
+
+    for field, k, ascending in zip(fields, ks, ascendings):
+        t = type_map[k]
+        asc = ""
+        if not ascending:
+            asc = " DESC"
+        column_name = (
+            f"ixd__{'_'.join(fields).replace('.', '_')}__{field.replace('.', '_')}"
+        )
+        info.columns.append(column_name)
+        info.columns_types.append(f"{column_name} {t} NOT NULL")
+        info.columns_asc.append(f"{column_name}{asc}")
+
+    return info
 
 
 def interleave_changes(

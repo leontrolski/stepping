@@ -24,12 +24,9 @@ mypy src tests
 ## Todos
 
 - See suggestions in `performance.md`.
-    - Can we `SELECT value FROM json_array_elements_text(...)` with bytes.
-        - Special class for compound indexes.
-    - Make SQL ZSets work with JSON bytes.
+    - Ready for blobs.
     - Can `pick_index` become simpler/get removed, can we remove `WithLen` and friends?
     - With `steppingpack` does `TIndexable`/`K` become meaningless.
-    - Can SQLite and postgres actually index bytes? Can we save space only putting the data in the index.
 - Write up parallelize docs.
     - Talk a lot about early commit mode and pitfalls.
     - `time` as a `SEQUENCE?` - would come as part of stepping manager.
@@ -46,6 +43,7 @@ mypy src tests
 - Implement `isjsonschemasubset` for msgpack.
 - Write everything up, email the dbsp people from the original paper. In particular, ask question about why the incremental recursive stuff is different from the paper.
 - Python 3.12. Use built in `batched`. Can we use the new `Unpack` syntax for nicer action types?
+    - Special class for compound indexes - we can only have this once we have `TypeVarTuple`.
 - Look at 11.8 "Window aggregates"
 - Replace `integrate_delay` with a nice transform. Similarly, transform shared delays.
 - Test arbitrary depth grouped nesting and joining in a grouped setting (Does this _need_ doing?).

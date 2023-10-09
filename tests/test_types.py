@@ -38,15 +38,6 @@ def test_pick_1() -> None:
     )
     assert actual == expected
 
-    # TODO: add SQLite versions of these assertions
-    actual_sql = postgres.to_expressions(actual)
-    expected_sql = [
-        "((data #>> '{age}')::int)",
-        "((data #>> '{name}')::text)",
-        "((data #>> '{child,name}')::text)",
-    ]
-    assert actual_sql == expected_sql
-
 
 def test_pick_2() -> None:
     # fmt: off
@@ -60,14 +51,6 @@ def test_pick_2() -> None:
     )
     assert actual == expected
 
-    actual_sql = postgres.to_expressions(actual, include_asc=True)
-    expected_sql = [
-        "((data #>> '{age}')::int)",
-        "((data #>> '{name}')::text) DESC",
-        "((data #>> '{child,name}')::text)",
-    ]
-    assert actual_sql == expected_sql
-
 
 def test_pick_3() -> None:
     actual = types.pick_identity(int, ascending=False)
@@ -77,10 +60,6 @@ def test_pick_3() -> None:
     l = list(generic.split_index_tuple_types(actual.fields, actual.ascending, actual.k))
     e = [("", int, False)]
     assert l == e
-
-    actual_sql = postgres.to_expressions(actual)
-    expected_sql = ["(data::int)"]
-    assert actual_sql == expected_sql
 
 
 def test_pick_4() -> None:
@@ -115,27 +94,14 @@ def test_pick_6() -> None:
     e = [("right.0", int, True)]
     assert l == e
 
-    actual_sql = postgres.to_expressions(actual)
-    expected_sql = [
-        "((data #>> '{right,0}')::int)",
-    ]
-    assert actual_sql == expected_sql
-
 
 def test_pick_7() -> None:
     actual = types.pick_index(types.Pair[int, tuple[str, float]], lambda p: p.right)
     expected = types.Index[types.Pair[int, tuple[str, float]], tuple[str, float]](
-        "right", (True, True), ANY, types.Pair[int, tuple[str, float]], tuple[str, float]  # type: ignore
+        ("right.0", "right.1"), (True, True), ANY, types.Pair[int, tuple[str, float]], tuple[str, float]  # type: ignore
     )
     assert actual == expected
 
     l = list(generic.split_index_tuple_types(actual.fields, actual.ascending, actual.k))
     e = [("right.0", str, True), ("right.1", float, True)]
     assert l == e
-
-    actual_sql = postgres.to_expressions(actual)
-    expected_sql = [
-        "((data #>> '{right,0}')::text)",
-        "((data #>> '{right,1}')::double)",
-    ]
-    assert actual_sql == expected_sql

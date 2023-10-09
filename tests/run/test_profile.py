@@ -264,21 +264,6 @@ def test_integrate(request: Any, conns: Conns, store_maker: StoreMaker) -> None:
 
     pr.dump_stats("test_integrate.prof")
 
-    if isinstance(store, st.StoreSQL) and store._zset_cls is st.ZSetPostgres:
-        qry = """
-            SELECT data, c
-            FROM t__sd_795b2c
-            WHERE (data #>> '{user_id}')::int = 1
-        """
-
-        with cProfile.Profile() as pr:
-            rows = list(conns.postgres.execute(qry))
-
-        pr.dump_stats("test_integrate__read.prof")
-        print("\ntest_profile_integrate took:")
-        print_time(pr)
-        pprint(rows[:3])
-
     actual = list(
         daily_cache.zset(store).iter_by_index(
             index_daily, frozenset((date(2023, 1, 2),))

@@ -73,8 +73,8 @@ def test_write_simple_int_with_index(sqlite_conn: generic.ConnSQLite) -> None:
 
     sqlite_conn.commit()
     schema = dump_schema(sqlite_conn)
-    ix_str = "CREATE INDEX ix__foo__identity ON foo(CAST(data AS INTEGER))"
-    assert ix_str in schema
+    assert "ixd__identity__identity INTEGER NOT NULL" in schema
+    assert "CREATE INDEX ix__foo__identity ON foo(ixd__identity__identity)" in schema
 
 
 def test_write_simple_date(sqlite_conn: generic.ConnSQLite) -> None:
@@ -103,8 +103,8 @@ def test_write_simple_date_with_index(sqlite_conn: generic.ConnSQLite) -> None:
 
     sqlite_conn.commit()
     schema = dump_schema(sqlite_conn)
-    ix_str = "CREATE INDEX ix__foo__identity ON foo(CAST(data AS TEXT))"
-    assert ix_str in schema
+    assert "ixd__identity__identity TEXT NOT NULL" in schema
+    assert "CREATE INDEX ix__foo__identity ON foo(ixd__identity__identity)" in schema
 
 
 def test_write_complex(sqlite_conn: generic.ConnSQLite) -> None:
@@ -206,12 +206,18 @@ def test_schema_made_and_used(sqlite_conn: generic.ConnSQLite) -> None:
 
     sqlite_conn.commit()
     schema = dump_schema(sqlite_conn)
-    ix_str = "CREATE INDEX ix__foo__name ON foo(CAST((data ->> '$.name') AS TEXT))"
-    assert ix_str in schema
-    ix_str = "CREATE INDEX ix__foo__name__age ON foo(CAST((data ->> '$.name') AS TEXT), CAST((data ->> '$.age') AS INTEGER))"
-    assert ix_str in schema
-    ix_str = "CREATE INDEX ix__foo__name__parent_bingo ON foo(CAST((data ->> '$.name') AS TEXT) DESC, CAST((data ->> '$.parent.bingo') AS TEXT))"
-    assert ix_str in schema
+
+    # fmt:off
+    assert "ixd__name_age__name TEXT NOT NULL" in schema
+    assert "ixd__name_age__age INTEGER NOT NULL" in schema
+    assert "ixd__name_parent_bingo__name TEXT NOT NULL" in schema
+    assert "ixd__name_parent_bingo__parent_bingo TEXT NOT NULL" in schema
+    assert "ixd__created__created TEXT NOT NULL" in schema
+    assert "CREATE INDEX ix__foo__name ON foo(ixd__name__name)" in schema
+    assert "CREATE INDEX ix__foo__name__age ON foo(ixd__name_age__name, ixd__name_age__age)" in schema
+    assert "CREATE INDEX ix__foo__name__parent_bingo ON foo(ixd__name_parent_bingo__name DESC, ixd__name_parent_bingo__parent_bingo)" in schema
+    assert "CREATE INDEX ix__foo__created ON foo(ixd__created__created)" in schema
+    # fmt:on
 
     # plan = postgres.explain(
     #     sqlite_conn,

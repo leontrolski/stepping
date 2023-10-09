@@ -75,10 +75,11 @@ def test_write_simple_int_with_index(postgres_conn: generic.ConnPostgres) -> Non
 
     postgres_conn.commit()
     schema = dump_schema(postgres_conn)
-    ix_str = (
-        "CREATE INDEX ix__foo__identity ON public.foo USING btree (((data)::integer))"
+    assert "ixd__identity__identity integer NOT NULL" in schema
+    assert (
+        "CREATE INDEX ix__foo__identity ON public.foo USING btree (ixd__identity__identity)"
+        in schema
     )
-    assert ix_str in schema
 
 
 def test_write_simple_date(postgres_conn: generic.ConnPostgres) -> None:
@@ -107,8 +108,11 @@ def test_write_simple_date_with_index(postgres_conn: generic.ConnPostgres) -> No
 
     postgres_conn.commit()
     schema = dump_schema(postgres_conn)
-    ix_str = "CREATE INDEX ix__foo__identity ON public.foo USING btree (((data)::text))"
-    assert ix_str in schema
+    assert "ixd__identity__identity text NOT NULL" in schema
+    assert (
+        "CREATE INDEX ix__foo__identity ON public.foo USING btree (ixd__identity__identity)"
+        in schema
+    )
 
 
 def test_write_complex(postgres_conn: generic.ConnPostgres) -> None:
@@ -210,20 +214,27 @@ def test_schema_made_and_used(postgres_conn: generic.ConnPostgres) -> None:
 
     postgres_conn.commit()
     schema = dump_schema(postgres_conn)
-    ix_str = "CREATE INDEX ix__foo__name ON public.foo USING btree (((data #>> '{name}'::text[])))"
-    assert ix_str in schema
-    ix_str = "CREATE INDEX ix__foo__name__age ON public.foo USING btree (((data #>> '{name}'::text[])), (((data #>> '{age}'::text[]))::integer))"
-    assert ix_str in schema
-    ix_str = "CREATE INDEX ix__foo__name__parent_bingo ON public.foo USING btree (((data #>> '{name}'::text[])) DESC, ((data #>> '{parent,bingo}'::text[])))"
-    assert ix_str in schema
+    # fmt:off
+    assert "ixd__name__name text NOT NULL" in schema
+    assert "ixd__name_age__name text NOT NULL" in schema
+    assert "ixd__name_age__age integer NOT NULL" in schema
+    assert "ixd__name_parent_bingo__name text NOT NULL" in schema
+    assert "ixd__name_parent_bingo__parent_bingo text NOT NULL" in schema
+    assert "ixd__created__created text NOT NULL" in schema
+    assert "CREATE INDEX ix__foo__created ON public.foo USING btree (ixd__created__created)" in schema
+    assert "CREATE INDEX ix__foo__name ON public.foo USING btree (ixd__name__name)" in schema
+    assert "CREATE INDEX ix__foo__name__age ON public.foo USING btree (ixd__name_age__name, ixd__name_age__age)" in schema
+    assert "CREATE INDEX ix__foo__name__parent_bingo ON public.foo USING btree (ixd__name_parent_bingo__name DESC, ixd__name_parent_bingo__parent_bingo)" in schema
+    # fmt:on
 
     plan = postgres.explain(
         cur,
-        "SELECT * FROM foo WHERE (data #>> '{name}') = 'some-name' AND (data #>> '{age}')::integer = 3",
+        "SELECT * FROM foo WHERE ixd__name__name = 'some-name' AND ixd__name_age__age = 3",
     )
     assert "Index Scan" in plan
 
-    plan = postgres.explain(cur, "SELECT * FROM foo ORDER BY (data #>> '{name}')")
+    with postgres.force_index_usage(cur):
+        plan = postgres.explain(cur, "SELECT * FROM foo ORDER BY ixd__name__name")
     assert "Index Scan" in plan
 
     postgres.MAKE_TEST_ASSERTIONS = True

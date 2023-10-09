@@ -230,6 +230,9 @@ def pick_index(
     if isinstance(proxy, tuple):
         k = tuple[*(p.t for p in proxy)]  # type: ignore
         fields = tuple(p.fields for p in proxy)
+    elif is_type(proxy.t, tuple):  # type: ignore
+        k = proxy.t  # type: ignore
+        fields = tuple(f"{proxy.fields}.{i}" for i, _ in enumerate(get_args(k)))  # type: ignore
     else:
         k = proxy.t  # type: ignore
         fields = proxy.fields  # type: ignore
