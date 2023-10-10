@@ -6,7 +6,7 @@ import pytest
 import stepping as st
 from stepping import run
 from stepping.graph import write_png
-from stepping.types import EMPTY, Empty, Pair, ZSet, pick_identity, pick_index
+from stepping.types import EMPTY, Empty, Index, Pair, ZSet
 from stepping.zset.python import ZSetPython
 from tests.conftest import Conns
 from tests.helpers import StoreMaker, store_ids, store_makers
@@ -27,8 +27,8 @@ def _f_test_join(l: ZSet[Left], r: ZSet[Right]) -> ZSet[Pair[Left, Right]]:
     joined = st.join(
         l,
         r,
-        on_left=pick_index(Left, lambda l: l.sound_id),
-        on_right=pick_index(Right, lambda r: r.sound_id),
+        on_left=Index.pick(Left, lambda l: l.sound_id),
+        on_right=Index.pick(Right, lambda r: r.sound_id),
     )
     return joined
 
@@ -99,8 +99,8 @@ def _f_test_outer_join(
     joined = st.outer_join(
         l,
         r,
-        on_left=pick_index(Left, lambda l: l.sound_id),
-        on_right=pick_index(Right, lambda r: r.sound_id),
+        on_left=Index.pick(Left, lambda l: l.sound_id),
+        on_right=Index.pick(Right, lambda r: r.sound_id),
     )
     return joined
 
@@ -234,14 +234,14 @@ def test_filter(request: Any, conns: Conns, store_maker: StoreMaker) -> None:
 
 
 def _f_test_first_n(a: ZSet[int]) -> ZSet[int]:
-    first_n_ed = st.first_n(a, index=pick_identity(int), n=3)
-    integrated = st.integrate_indexed(first_n_ed, indexes=(pick_identity(int),))
+    first_n_ed = st.first_n(a, index=Index.identity(int), n=3)
+    integrated = st.integrate_indexed(first_n_ed, indexes=(Index.identity(int),))
     return integrated
 
 
 @pytest.mark.parametrize("store_maker", store_makers, ids=store_ids)
 def test_first_n(request: Any, conns: Conns, store_maker: StoreMaker) -> None:
-    index = pick_identity(int)
+    index = Index.identity(int)
     graph, store = store_maker(conns, _f_test_first_n)
     if request.config.getoption("--write-graphs"):
         write_png(graph, "graphs/test_first_n.png")
@@ -286,37 +286,26 @@ class Product(st.Data):
     price: int
 
 
-class WithOne(st.Data):
-    value: int
-    join_on: int = 1
-
-
-def _make_one(value: int) -> WithOne:
-    return WithOne(value=value)
-
-
-def _flatten(p: Pair[WithOne, WithOne]) -> tuple[str, int, str, int]:
-    return "total", p.left.value, "count", p.right.value
+def _flatten(p: Pair[int, int]) -> tuple[str, int, str, int]:
+    return "total", p.left, "count", p.right
 
 
 def _pick_price(p: Product) -> int:
     return p.price
 
 
-index_joined = st.pick_index(Pair[WithOne, WithOne], lambda p: p.left.join_on)
-cache_joined = st.Cache[Pair[WithOne, WithOne]]()
+index_joined = st.Index.atom("one", Pair[int, int], int, lambda p: 1)
+cache_joined = st.Cache[Pair[int, int]]()
 
 
 def _f_test_sum(a: ZSet[Product]) -> ZSet[tuple[str, int, str, int]]:
     summed = st.reduce(a, zero=int, pick_value=_pick_price)
     counted = st.count(a)
-    summed_mapped = st.map(summed, f=_make_one)
-    counted_mapped = st.map(counted, f=_make_one)
     joined = st.join(
-        summed_mapped,
-        counted_mapped,
-        on_left=pick_index(WithOne, lambda w: w.join_on),
-        on_right=pick_index(WithOne, lambda w: w.join_on),
+        summed,
+        counted,
+        on_left=Index.atom("left", int, int, lambda n: 1),
+        on_right=Index.atom("right", int, int, lambda n: 1),
     )
     _ = cache_joined[joined](lambda j: st.integrate_indexed(j, indexes=(index_joined,)))
     flattened = st.map(joined, f=_flatten)
@@ -376,28 +365,18 @@ def test_sum(request: Any, conns: Conns, store_maker: StoreMaker) -> None:
     assert actual_cached == [
         (
             1,
-            Pair(left=WithOne(value=10, join_on=1), right=WithOne(value=2, join_on=1)),
+            Pair(left=10, right=2),
             1,
         )
     ]
 
 
-class WithLen(st.Data):
-    value: str
-    length: int
-
-
-def _with_len(s: str) -> WithLen:
-    return WithLen(value=s, length=len(s))
-
-
-def _upper(w: WithLen) -> str:
-    return w.value.upper()
+def _upper(n: str) -> str:
+    return n.upper()
 
 
 def _f_test_group(a: ZSet[str]) -> ZSet[Pair[str, int]]:
-    mapped = st.map(a, f=_with_len)
-    grouped = st.group(mapped, by=pick_index(WithLen, lambda w: w.length))
+    grouped = st.group(a, by=st.Index.atom("len", str, int, lambda n: len(n)))
     mapped_2 = st.per_group[grouped](lambda g: st.map(g, f=_upper))
     flattened = st.flatten(mapped_2)
     return flattened
@@ -457,7 +436,7 @@ def _upper2(w: WithLenAndFirst) -> str:
 
 def _f_test_nested_group(a: ZSet[str]) -> ZSet[Pair[str, int]]:
     keys_added = st.map(a, f=_with_len_and_first)
-    grouped = st.group(keys_added, by=pick_index(WithLenAndFirst, lambda w: w.length))
+    grouped = st.group(keys_added, by=Index.pick(WithLenAndFirst, lambda w: w.length))
     uppered = st.per_group[grouped](lambda g: st.map(g, f=_upper2))
     flattened = st.flatten(uppered)
     integrated = st.integrate(flattened)
@@ -488,7 +467,7 @@ def test_nested_group(request: Any, conns: Conns, store_maker: StoreMaker) -> No
 class WithLenAndZSet(st.Data):
     value: str
     length: int
-    zset: Annotated[ZSetPython[str], *st.annotate_zset(str)]
+    zset: ZSetPython[str]
 
 
 def _with_len_and_zset(s: str) -> WithLenAndZSet:
@@ -505,7 +484,7 @@ def pick_zset(w: WithLenAndZSet) -> ZSetPython[str]:
 
 def _f_test_group_by(a: ZSet[str]) -> ZSet[Pair[ZSetPython[str], int]]:
     keys_added = st.map(a, f=_with_len_and_zset)
-    grouped = st.group(keys_added, by=pick_index(WithLenAndZSet, lambda w: w.length))
+    grouped = st.group(keys_added, by=Index.pick(WithLenAndZSet, lambda w: w.length))
     reduced = st.per_group[grouped](
         lambda g: st.reduce(g, zero=zset_zero, pick_value=pick_zset)
     )
@@ -596,8 +575,8 @@ def _f_test_join_2(l: ZSet[Left], r: ZSet[Right]) -> ZSet[Pair[Left, Right]]:
     joined = st.join(
         l,
         r,
-        on_left=pick_index(Left, lambda l: l.sound_id),
-        on_right=pick_index(Right, lambda r: r.sound_id),
+        on_left=Index.pick(Left, lambda l: l.sound_id),
+        on_right=Index.pick(Right, lambda r: r.sound_id),
     )
     return joined
 
@@ -675,7 +654,7 @@ def _pick_weight(w: WithLenAndWeight) -> int:
 
 def _f_test_group_2(a: ZSet[str]) -> ZSet[Pair[int, int]]:
     mapped = st.map(a, f=_with_len_and_weight)
-    grouped = st.group(mapped, by=pick_index(WithLenAndWeight, lambda w: w.length))
+    grouped = st.group(mapped, by=Index.pick(WithLenAndWeight, lambda w: w.length))
     mapped_2 = st.per_group[grouped](
         lambda g: st.reduce(g, zero=int, pick_value=_pick_weight)
     )
@@ -722,8 +701,8 @@ def test_group_by_2(request: Any, conns: Conns, store_maker: StoreMaker) -> None
 
 
 def _f_test_first_n_2(a: ZSet[int]) -> ZSet[int]:
-    first_n_ed = st.first_n(a, index=pick_identity(int), n=3)
-    integrated = st.integrate_indexed(first_n_ed, indexes=(pick_identity(int),))
+    first_n_ed = st.first_n(a, index=Index.identity(int), n=3)
+    integrated = st.integrate_indexed(first_n_ed, indexes=(Index.identity(int),))
     return integrated
 
 
@@ -736,7 +715,7 @@ def test_first_n_2(request: Any, conns: Conns, store_maker: StoreMaker) -> None:
 
     (action,) = run.actions(store, graph)
 
-    index = pick_identity(int)
+    index = Index.identity(int)
 
     def insert(n: int) -> list[int]:
         (z,) = action.insert(n)
@@ -774,7 +753,7 @@ def test_first_n_2(request: Any, conns: Conns, store_maker: StoreMaker) -> None:
 
 def _f_test_group_by_zset_2(a: ZSet[str]) -> ZSet[Pair[ZSetPython[str], int]]:
     keys_added = st.map(a, f=_with_len_and_zset)
-    grouped = st.group(keys_added, by=pick_index(WithLenAndZSet, lambda w: w.length))
+    grouped = st.group(keys_added, by=Index.pick(WithLenAndZSet, lambda w: w.length))
     reduced = st.per_group[grouped](
         lambda g: st.reduce(g, zero=zset_zero, pick_value=pick_zset)
     )

@@ -3,17 +3,7 @@ from typing import Any
 from stepping import zset
 from stepping.graph import A1, Graph, OperatorKind, Path, VertexUnary
 from stepping.operators import builder, linear
-from stepping.types import (
-    Empty,
-    Grouped,
-    Index,
-    K,
-    Pair,
-    Signature,
-    T,
-    ZSet,
-    pick_index,
-)
+from stepping.types import Empty, Grouped, Index, K, Pair, Signature, T, ZSet
 from stepping.zset import functions
 from stepping.zset.python import ZSetPython
 
@@ -98,7 +88,7 @@ def wrap_delay(
     k: type[K],
     first_vertex: VertexUnary[Any, Grouped[Any, K]],
 ) -> Graph[A1[Grouped[ZSet[T], K]], Grouped[ZSet[T], K]]:
-    index = pick_index(
+    index = Index.pick(
         Pair[t, k],  # type: ignore[valid-type]
         lambda p: p.right,
     )

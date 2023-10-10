@@ -24,10 +24,9 @@ mypy src tests
 ## Todos
 
 - See suggestions in `performance.md`.
-    - Ready for blobs.
-    - Can `pick_index` become simpler/get removed, can we remove `WithLen` and friends?
-    - With `steppingpack` does `TIndexable`/`K` become meaningless.
-- Write up parallelize docs.
+    - Avoid writing to identity if not Data
+    - Do the SQLite perf improvements.
+- Write up parallelize docs, update index docs (esp. API page), add `steppingpack` docs.
     - Talk a lot about early commit mode and pitfalls.
     - `time` as a `SEQUENCE?` - would come as part of stepping manager.
     - Future? Need to think hard about how one could allow parallelism where you can guaranteee no phantom rows.

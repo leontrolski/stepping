@@ -117,20 +117,20 @@ def link_attrs(classes: st.ZSet[Class]) -> st.ZSet[Resolved]:
     from_to = st.join(
         all_edges,
         classes,
-        on_left=st.pick_index(st.Pair[str, str], lambda p: p.right),
-        on_right=st.pick_index(Class, lambda a: a.identifier),
+        on_left=st.Index.pick(st.Pair[str, str], lambda p: p.right),
+        on_right=st.Index.pick(Class, lambda a: a.identifier),
     )
     grouped_by_from_identifier = st.group_reduce_flatten(
         from_to,
-        by=st.pick_index(st.Pair[st.Pair[str, str], Class], lambda p: p.left.left),
+        by=st.Index.pick(st.Pair[st.Pair[str, str], Class], lambda p: p.left.left),
         zero=zset_zero,
         pick_value=pick_zset,
     )
     from_joined_to_relevant = st.outer_join(
         classes,
         grouped_by_from_identifier,
-        on_left=st.pick_index(Class, lambda a: a.identifier),
-        on_right=st.pick_index(st.Pair[st.ZSetPython[Class], str], lambda p: p.right),
+        on_left=st.Index.pick(Class, lambda a: a.identifier),
+        on_right=st.Index.pick(st.Pair[st.ZSetPython[Class], str], lambda p: p.right),
     )
     resolved = st.map(from_joined_to_relevant, f=resolve)
     _ = output_cache[resolved](lambda r:  st.integrate(r))

@@ -87,20 +87,20 @@ def _f_test_profile_1(
     join_meters = st.join(
         users,
         meters,
-        on_left=st.pick_index(User, lambda u: u.user_id),
-        on_right=st.pick_index(Meter, lambda m: m.user_id),
+        on_left=st.Index.pick(User, lambda u: u.user_id),
+        on_right=st.Index.pick(Meter, lambda m: m.user_id),
     )
     join_meters_flat = st.map(join_meters, f=make_user_meter)
     join_reads = st.join(
         join_meters_flat,
         reads,
-        on_left=st.pick_index(UserMeter, lambda p: p.meter_id),
-        on_right=st.pick_index(HalfHourlyMeterRead, lambda m: m.meter_id),
+        on_left=st.Index.pick(UserMeter, lambda p: p.meter_id),
+        on_right=st.Index.pick(HalfHourlyMeterRead, lambda m: m.meter_id),
     )
     merged = st.map(join_reads, f=with_date)
     grouped = st.group(
         merged,
-        by=st.pick_index(UserMeterRead, lambda f: (f.user_id, f.meter_id, f.date)),
+        by=st.Index.pick(UserMeterRead, lambda f: (f.user_id, f.meter_id, f.date)),
     )
     reduced = st.per_group[grouped](
         lambda g: st.reduce(g, zero=float, pick_value=pick_value)
@@ -110,7 +110,7 @@ def _f_test_profile_1(
     return as_daily
 
 
-index_daily = st.pick_index(DailyUsage, lambda d: d.date)
+index_daily = st.Index.pick(DailyUsage, lambda d: d.date)
 daily_cache = st.Cache[DailyUsage]()
 
 

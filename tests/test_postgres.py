@@ -4,14 +4,15 @@ import subprocess
 from datetime import date, datetime, timezone
 from typing import Any
 
-from stepping.types import Data, SerializableObject, ZSet, pick_identity, pick_index
+from stepping.steppingpack import Data
+from stepping.types import Index, ZSet
 from stepping.zset import functions
 from stepping.zset.python import ZSetPython
 from stepping.zset.sql import generic, postgres
 
 
 def _flush(z: generic.ZSetSQL[Any]) -> None:
-    z.upsert(z.changes)
+    z.upsert()
     z.changes = ZSetPython[Any]()
 
 
@@ -25,7 +26,7 @@ def dump_schema(conn: generic.ConnPostgres) -> str:
 
 def test_create_table(postgres_conn: generic.ConnPostgres) -> None:
     cur = postgres_conn.cursor()
-    ix = pick_identity(int)
+    ix = Index.identity(int)
     z = postgres.ZSetPostgres[int](cur, int, "foo", (ix,))
 
 
@@ -38,7 +39,7 @@ class Animal(Data):
 
 def test_typing(postgres_conn: generic.ConnPostgres) -> None:
     cur = postgres_conn.cursor()
-    animal: SerializableObject = Animal(
+    animal = Animal(
         name="fido",
         sound="woof",
         age=38,
@@ -66,7 +67,7 @@ def test_write_simple_int(postgres_conn: generic.ConnPostgres) -> None:
 
 def test_write_simple_int_with_index(postgres_conn: generic.ConnPostgres) -> None:
     cur = postgres_conn.cursor()
-    z = postgres.ZSetPostgres(cur, int, "foo", (pick_identity(int),))
+    z = postgres.ZSetPostgres(cur, int, "foo", (Index.identity(int),))
     z.create_data_table()
     changes = ZSetPython({42: 1, 56: 2})
     z += changes
@@ -98,7 +99,7 @@ def test_write_simple_date_with_index(postgres_conn: generic.ConnPostgres) -> No
         cur,
         date,
         "foo",
-        (pick_identity(date),),
+        (Index.identity(date),),
     )
     z.create_data_table()
     changes = ZSetPython({date(2021, 1, 3): 1, date(2021, 1, 4): -2})
@@ -176,12 +177,12 @@ class Foo(Data):
 
 def test_schema_made_and_used(postgres_conn: generic.ConnPostgres) -> None:
     cur = postgres_conn.cursor()
-    ix_namely = pick_index(Foo, lambda f: f.name)
-    ix_name_and_age = pick_index(Foo, lambda f: (f.name, f.age))
-    ix_parent_bingo = pick_index(
+    ix_namely = Index.pick(Foo, lambda f: f.name)
+    ix_name_and_age = Index.pick(Foo, lambda f: (f.name, f.age))
+    ix_parent_bingo = Index.pick(
         Foo, lambda f: (f.name, f.parent.bingo), ascending=(False, True)
     )
-    ix_created = pick_index(Foo, lambda f: f.created)
+    ix_created = Index.pick(Foo, lambda f: f.created)
 
     z = postgres.ZSetPostgres(
         cur,
@@ -223,8 +224,8 @@ def test_schema_made_and_used(postgres_conn: generic.ConnPostgres) -> None:
     assert "ixd__created__created text NOT NULL" in schema
     assert "CREATE INDEX ix__foo__created ON public.foo USING btree (ixd__created__created)" in schema
     assert "CREATE INDEX ix__foo__name ON public.foo USING btree (ixd__name__name)" in schema
-    assert "CREATE INDEX ix__foo__name__age ON public.foo USING btree (ixd__name_age__name, ixd__name_age__age)" in schema
-    assert "CREATE INDEX ix__foo__name__parent_bingo ON public.foo USING btree (ixd__name_parent_bingo__name DESC, ixd__name_parent_bingo__parent_bingo)" in schema
+    assert "CREATE INDEX ix__foo__name_age ON public.foo USING btree (ixd__name_age__name, ixd__name_age__age)" in schema
+    assert "CREATE INDEX ix__foo__name_parent_bingo ON public.foo USING btree (ixd__name_parent_bingo__name DESC, ixd__name_parent_bingo__parent_bingo)" in schema
     # fmt:on
 
     plan = postgres.explain(

@@ -90,20 +90,20 @@ def link_attrs(classes: st.ZSet[Class]) -> st.ZSet[Resolved]:
     from_to = st.join(
         all_edges,
         classes,
-        on_left=st.pick_index(st.Pair[str, str], lambda p: p.right),
-        on_right=st.pick_index(Class, lambda a: a.identifier),
+        on_left=st.Index.pick(st.Pair[str, str], lambda p: p.right),
+        on_right=st.Index.pick(Class, lambda a: a.identifier),
     )
     grouped_by_from_identifier = st.group_reduce_flatten(
         from_to,
-        by=st.pick_index(st.Pair[st.Pair[str, str], Class], lambda p: p.left.left),
+        by=st.Index.pick(st.Pair[st.Pair[str, str], Class], lambda p: p.left.left),
         zero=zset_zero,
         pick_value=pick_zset,
     )
     from_joined_to_relevant = st.outer_join(
         classes,
         grouped_by_from_identifier,
-        on_left=st.pick_index(Class, lambda a: a.identifier),
-        on_right=st.pick_index(st.Pair[st.ZSetPython[Class], str], lambda p: p.right),
+        on_left=st.Index.pick(Class, lambda a: a.identifier),
+        on_right=st.Index.pick(st.Pair[st.ZSetPython[Class], str], lambda p: p.right),
     )
     resolved = st.map(from_joined_to_relevant, f=resolve)
     _ = output_cache[resolved](lambda r: st.integrate(r))
@@ -126,8 +126,11 @@ graph = st.compile_lazy(link_attrs)
 
 def test_typechecker(request: Any) -> None:
     SQLITE_PATH.unlink(missing_ok=True)
-    if request.config.getoption("--write-graphs"):
-        st.write_png(graph(), "graphs/test_typechecker.png")
+    try:
+        if request.config.getoption("--write-graphs"):
+            st.write_png(graph(), "graphs/test_typechecker.png")
+    except ValueError:
+        pass
 
     with st.connection_sqlite(SQLITE_PATH) as conn:
         store = st.StoreSQLite.from_graph(conn, graph(), create_tables=True)
@@ -141,19 +144,19 @@ def test_typechecker(request: Any) -> None:
         expected = dedent(
             """
             <ZSetPython>
-            ╒═══════════╤══════════════════════════════════════════════════════════════════════════════════════════════════╕
-            │   _count_ │ _value_                                                                                          │
-            ╞═══════════╪══════════════════════════════════════════════════════════════════════════════════════════════════╡
-            │         1 │ identifier='one.C' attrs=(A(key='z', value=(A(key='y', value=(A(key='x', value='str'),)),)),)    │
-            ├───────────┼──────────────────────────────────────────────────────────────────────────────────────────────────┤
-            │         1 │ identifier='one.B' attrs=(A(key='y', value=(A(key='x', value='str'),)),)                         │
-            ├───────────┼──────────────────────────────────────────────────────────────────────────────────────────────────┤
-            │         1 │ identifier='one.A' attrs=(A(key='x', value='str'),)                                              │
-            ├───────────┼──────────────────────────────────────────────────────────────────────────────────────────────────┤
-            │         1 │ identifier='two.E' attrs=(A(key='x', value='float'),)                                            │
-            ├───────────┼──────────────────────────────────────────────────────────────────────────────────────────────────┤
-            │         1 │ identifier='two.D' attrs=(A(key='y', value=(A(key='x', value='str'),)), A(key='z', value='int')) │
-            ╘═══════════╧══════════════════════════════════════════════════════════════════════════════════════════════════╛
+            ╒═══════════╤══════════════╤═════════════════════════════════════════════════════════════════════════╕
+            │   _count_ │ identifier   │ attrs                                                                   │
+            ╞═══════════╪══════════════╪═════════════════════════════════════════════════════════════════════════╡
+            │         1 │ one.A        │ (A(key='x', value='str'),)                                              │
+            ├───────────┼──────────────┼─────────────────────────────────────────────────────────────────────────┤
+            │         1 │ two.D        │ (A(key='y', value=(A(key='x', value='str'),)), A(key='z', value='int')) │
+            ├───────────┼──────────────┼─────────────────────────────────────────────────────────────────────────┤
+            │         1 │ two.E        │ (A(key='x', value='float'),)                                            │
+            ├───────────┼──────────────┼─────────────────────────────────────────────────────────────────────────┤
+            │         1 │ one.B        │ (A(key='y', value=(A(key='x', value='str'),)),)                         │
+            ├───────────┼──────────────┼─────────────────────────────────────────────────────────────────────────┤
+            │         1 │ one.C        │ (A(key='z', value=(A(key='y', value=(A(key='x', value='str'),)),)),)    │
+            ╘═══════════╧══════════════╧═════════════════════════════════════════════════════════════════════════╛
             """
         ).strip()
         assert set(str(actual).splitlines()) == set(expected.splitlines())
@@ -190,15 +193,15 @@ def test_typechecker(request: Any) -> None:
         expected = dedent(
             """
             <ZSetPython>
-            ╒═══════════╤═══════════════════════════════════════════════════════════════════════════════════════════════╕
-            │   _count_ │ _value_                                                                                       │
-            ╞═══════════╪═══════════════════════════════════════════════════════════════════════════════════════════════╡
-            │        -1 │ identifier='one.C' attrs=(A(key='z', value=(A(key='y', value=(A(key='x', value='str'),)),)),) │
-            ├───────────┼───────────────────────────────────────────────────────────────────────────────────────────────┤
-            │         1 │ identifier='one.C' attrs=(A(key='z', value='one.B'),)                                         │
-            ├───────────┼───────────────────────────────────────────────────────────────────────────────────────────────┤
-            │        -1 │ identifier='one.B' attrs=(A(key='y', value=(A(key='x', value='str'),)),)                      │
-            ╘═══════════╧═══════════════════════════════════════════════════════════════════════════════════════════════╛
+            ╒═══════════╤══════════════╤══════════════════════════════════════════════════════════════════════╕
+            │   _count_ │ identifier   │ attrs                                                                │
+            ╞═══════════╪══════════════╪══════════════════════════════════════════════════════════════════════╡
+            │        -1 │ one.B        │ (A(key='y', value=(A(key='x', value='str'),)),)                      │
+            ├───────────┼──────────────┼──────────────────────────────────────────────────────────────────────┤
+            │         1 │ one.C        │ (A(key='z', value='one.B'),)                                         │
+            ├───────────┼──────────────┼──────────────────────────────────────────────────────────────────────┤
+            │        -1 │ one.C        │ (A(key='z', value=(A(key='y', value=(A(key='x', value='str'),)),)),) │
+            ╘═══════════╧══════════════╧══════════════════════════════════════════════════════════════════════╛
             """
         ).strip()
         assert set(str(actual).splitlines()) == set(expected.splitlines())

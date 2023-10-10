@@ -59,12 +59,12 @@ def query(
     joined = st.join(
         products,
         line_items,
-        on_left=st.pick_index(Product, lambda p: p.name),
-        on_right=st.pick_index(LineItem, lambda l: l.product_name),
+        on_left=st.Index.pick(Product, lambda p: p.name),
+        on_right=st.Index.pick(LineItem, lambda l: l.product_name),
     )
     grouped = st.group_reduce_flatten(
         joined,
-        by=st.pick_index(st.Pair[Product, LineItem], lambda p: p.right.basket_id),
+        by=st.Index.pick(st.Pair[Product, LineItem], lambda p: p.right.basket_id),
         zero=float,
         pick_value=pick_price,
     )
@@ -81,7 +81,7 @@ def query(
 
 `st.join(...)` is equivalent to a `LEFT INNER JOIN`, there is also `st.outer_join(...)`.
 
-`st.pick_index(...)` picks fields from a type. These indexes are used by the `Store` later to ensure that querying past data is efficient.
+`st.Index.pick(...)` picks fields from a type. These indexes are used by the `Store` later to ensure that querying past data is efficient.
 
 `st.group_reduce_flatten(...)` is equivalent to `SELECT sum(...) FROM ... GROUP BY basket_id`. _Unlike in SQL, the group, reduce and flatten can be decomposed, see the [definition](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+%22def+group_reduce_flatten_lifted%22&type=code)._
 

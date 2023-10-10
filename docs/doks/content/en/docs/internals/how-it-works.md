@@ -258,8 +258,8 @@ def query_graph(a: st.ZSet[A], b: st.ZSet[B]) -> st.ZSet[st.Pair[A, B]]:
     joined = linear.join(
         a_uppered,
         b,
-        on_left=st.pick_index(A, lambda a: a.name),
-        on_right=st.pick_index(B, lambda b: b.name),
+        on_left=st.Index.pick(A, lambda a: a.name),
+        on_right=st.Index.pick(B, lambda b: b.name),
     )
     integrated = st.integrate(joined)
     return integrated
@@ -356,8 +356,8 @@ def query_dumb(a: st.ZSet[A], b: st.ZSet[B]) -> st.ZSet[st.Pair[A, B]]:
     joined = linear.join(
         a,
         b,
-        on_left=st.pick_index(A, lambda a: a.name),
-        on_right=st.pick_index(B, lambda b: b.name),
+        on_left=st.Index.pick(A, lambda a: a.name),
+        on_right=st.Index.pick(B, lambda b: b.name),
     )
     return joined
 ```
@@ -371,8 +371,8 @@ def query_dumb(a: st.ZSet[A], b: st.ZSet[B]) -> st.ZSet[st.Pair[A, B]]:
     joined = linear.join(
         a_integrated,
         b_integrated,
-        on_left=st.pick_index(A, lambda a: a.name),
-        on_right=st.pick_index(B, lambda b: b.name),
+        on_left=st.Index.pick(A, lambda a: a.name),
+        on_right=st.Index.pick(B, lambda b: b.name),
     )
     differentiated = st.differentiate(joined)
     return differentiated
@@ -583,7 +583,7 @@ def sum_by_length(a: st.ZSet[str]) -> st.ZSet[st.Pair[st.ZSetPython[str], int]]:
     with_len = st.map(a, f=_len)
     grouped = st.group_reduce_flatten(
         with_len,
-        by=st.pick_index(WithLen, lambda w: w.length),
+        by=st.Index.pick(WithLen, lambda w: w.length),
         zero=_zero_zset,
         pick_value=_pick_zset,
     )

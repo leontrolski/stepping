@@ -15,7 +15,6 @@ from stepping.types import (
     U,
     ZSet,
     get_annotation_zset,
-    pick_index,
 )
 
 
@@ -162,11 +161,11 @@ def _transitive_closure(
     pass :shrug.
     """
     with builder.at_compile_time:
-        with_right: Index[Pair[TIndexable, TIndexable], TIndexable] = pick_index(
+        with_right: Index[Pair[TIndexable, TIndexable], TIndexable] = Index.pick(
             get_annotation_zset(builder.compile_typeof(a)),
             lambda row: row.right,
         )
-        with_left: Index[Pair[TIndexable, TIndexable], TIndexable] = pick_index(
+        with_left: Index[Pair[TIndexable, TIndexable], TIndexable] = Index.pick(
             get_annotation_zset(builder.compile_typeof(a)),
             lambda row: row.left,
         )

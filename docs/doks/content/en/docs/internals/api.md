@@ -460,7 +460,7 @@ st.actions(
 ## Indexes
 
 ```python
-st.pick_index(
+st.Index.pick(
     t: type[T],
     f: Callable[[T], K],
     ascending: bool | tuple[bool, ...] = True,

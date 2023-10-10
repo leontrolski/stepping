@@ -25,12 +25,12 @@ def query(
     joined = st.join(
         products,
         line_items,
-        on_left=st.pick_index(Product, lambda p: p.name),
-        on_right=st.pick_index(LineItem, lambda l: l.product_name),
+        on_left=st.Index.pick(Product, lambda p: p.name),
+        on_right=st.Index.pick(LineItem, lambda l: l.product_name),
     )
     grouped = st.group_reduce_flatten(
         joined,
-        by=st.pick_index(st.Pair[Product, LineItem], lambda p: p.right.basket_id),
+        by=st.Index.pick(st.Pair[Product, LineItem], lambda p: p.right.basket_id),
         zero=float,
         pick_value=pick_price,
     )

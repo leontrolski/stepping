@@ -4,33 +4,49 @@ from typing import Generic, Iterator
 
 import immutables
 
-from stepping.datatypes._btree import Ascending, Node, add
+from stepping.datatypes._btree import Node, add
 from stepping.datatypes._btree import lt as lt
 from stepping.datatypes._btree import yield_sorted_matching
 from stepping.types import MATCH_ALL, Index, K, MatchAll, TSerializable
 
 
 class SortedSet(Generic[TSerializable, K]):
+    __slots__ = ("added", "removed", "btree", "index")
+
     def __init__(self, index: Index[TSerializable, K]) -> None:
-        self.added = immutables.Map[TSerializable, None]()  # type: ignore
-        self.removed = immutables.Map[TSerializable, None]()  # type: ignore
+        self.added = immutables.Map[TSerializable, None]()
+        self.removed = immutables.Map[TSerializable, None]()
         self.btree = Node[TSerializable, K]((), ())
         self.index = index
 
-    def add(self, other: TSerializable) -> None:
+    def add(self, other: TSerializable) -> SortedSet[TSerializable, K]:
+        btree = self.btree
+        added = self.added
+        removed = self.removed
+
         if other not in self.added:
-            self.btree = add(
+            btree = add(
                 self.btree,
                 other,
                 self.index.f(other),
                 self.index.ascending,
             )
-            self.added = self.added.set(other, None)
+            added = self.added.set(other, None)
         if other in self.removed:
-            self.removed = self.removed.delete(other)
+            removed = self.removed.delete(other)
 
-    def remove(self, other: TSerializable) -> None:
-        self.removed = self.removed.set(other, None)
+        out = SortedSet[TSerializable, K](self.index)
+        out.added = added
+        out.removed = removed
+        out.btree = btree
+        return out
+
+    def remove(self, other: TSerializable) -> SortedSet[TSerializable, K]:
+        out = SortedSet[TSerializable, K](self.index)
+        out.added = self.added
+        out.removed = self.removed.set(other, None)
+        out.btree = self.btree
+        return out
 
     def __iter__(self) -> Iterator[TSerializable]:
         for n in yield_sorted_matching(self.btree, MATCH_ALL, self.index.ascending):
@@ -49,13 +65,6 @@ class SortedSet(Generic[TSerializable, K]):
                 if n in self.added and n not in self.removed:
                     yield n
 
-    def copy(self) -> SortedSet[TSerializable, K]:
-        out = SortedSet[TSerializable, K](self.index)
-        out.added = self.added
-        out.removed = self.removed
-        out.btree = self.btree
-        return out
-
     def __repr__(self) -> str:
         more_than_10 = " ..." if len(self.added) - len(self.removed) > 10 else ""
         inner = ", ".join(repr(n) for n, _ in zip(self, range(10)))
@@ -63,7 +72,7 @@ class SortedSet(Generic[TSerializable, K]):
 
 
 class SortableKey(Generic[K]):
-    def __init__(self, key: K, ascending: Ascending) -> None:
+    def __init__(self, key: K, ascending: tuple[bool, ...]) -> None:
         self.key = key
         self.ascending = ascending
 

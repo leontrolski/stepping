@@ -94,7 +94,7 @@ class StoreSQL:
         if vertex not in self._current:
             raise RuntimeError(f"There is nowhere to put data for key: {vertex}")
         value = self._current[vertex]
-        if time is not None:
+        if time is not None and time.frontier != -1:
             value.wait_til_time(time.frontier)
         return value
 
@@ -118,14 +118,14 @@ class StoreSQL:
         self._current |= self._changes
 
     def flush(self, vertices: Iterable[VertexUnaryDelay[Any, Any]], time: Time) -> None:
-        values = [self._changes[vertex] for vertex in vertices]
-
-        for value in values:
+        for vertex in vertices:
+            value = self._changes[vertex]
             changes = value.changes
-            value.upsert(changes)
-            value.set_last_update_time(time.input_time)
+            value.upsert()
+            if time.input_time != -1:
+                value.set_last_update_time(time.input_time)
             for peer in self._by_table[value.table_name]:
-                peer.changes = peer.changes + (-changes)
+                peer.changes -= changes
             self._by_table[value.table_name] = [value]
 
         self._conn.commit()

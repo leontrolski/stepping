@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from stepping.types import Pair, Reducable, T, ZSet, pick_identity, pick_index
+from stepping.types import Index, Pair, Reducable, T, ZSet
 from stepping.zset import functions
 from stepping.zset.python import ZSetPython
 
@@ -47,7 +47,7 @@ def to_zset(table: list[T]) -> ZSet[T]:
 
 
 def test_index() -> None:
-    ix = pick_identity(int)
+    ix = Index.identity(int)
     zset = ZSetPython[int](indexes=(ix,))
     zset += ZSetPython({3: 2})
 
@@ -56,8 +56,8 @@ def test_join() -> None:
     actual = functions.join(
         to_zset(left_table),
         to_zset(right_table),
-        on_left=pick_index(Left, lambda l: l.sound_id),
-        on_right=pick_index(Right, lambda r: r.sound_id),
+        on_left=Index.pick(Left, lambda l: l.sound_id),
+        on_right=Index.pick(Right, lambda r: r.sound_id),
     )
     expected = ZSetPython(
         {

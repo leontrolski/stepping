@@ -8,14 +8,13 @@ from typing import Any, Iterator
 
 from psycopg_pool import ConnectionPool
 
-from stepping.serialize import deserialize, make_identity, serialize
+from stepping import steppingpack
 from stepping.types import (
     MATCH_ALL,
     Index,
     Indexable,
     K,
     MatchAll,
-    Serialized,
     TSerializable,
     ZSet,
     batched,
@@ -25,13 +24,13 @@ from stepping.zset.sql import generic
 
 _pool: ConnectionPool | None = None
 MAKE_TEST_ASSERTIONS = False
-TYPE_MAP: generic.TypeDBTypeMap = defaultdict(lambda: "TEXT")
-TYPE_MAP.update(
-    {
-        int: "INT",
-        float: "DOUBLE",
-        bool: "BOOLEAN",
-    }
+TYPE_MAP = generic.TypeDBTypeMap(
+    default="TEXT",
+    map=(
+        (int, "INT"),
+        (float, "DOUBLE"),
+        (bool, "BOOLEAN"),
+    ),
 )
 
 
@@ -42,8 +41,8 @@ class ZSetPostgres(generic.ZSetSQL[TSerializable]):
     def create_data_table(self) -> None:
         return _create_data_table(self)
 
-    def upsert(self, z: ZSet[TSerializable]) -> None:
-        return _upsert(self, z)
+    def upsert(self) -> None:
+        return _upsert(self, self.changes)
 
     def get_by_key(
         self, index: Index[TSerializable, K], match_keys: frozenset[K] | MatchAll
@@ -114,12 +113,14 @@ def _upsert(z_sql: ZSetPostgres[TSerializable], z: ZSet[TSerializable]) -> None:
 
     values = list[tuple[Any, ...]]()
     for v, count in z.iter():
-        value: tuple[Any, ...] = (make_identity(v), json.dumps(serialize(v)))
+        value: tuple[Any, ...] = (steppingpack.make_identity(v), steppingpack.dump(v))
         for index in z_sql.indexes:
-            if isinstance(index.fields, str):
-                value += (serialize(index.f(v)),)
+            if index.is_composite:
+                value += tuple(
+                    steppingpack.dump_json(index_value) for index_value in index.f(v)
+                )
             else:
-                value += tuple(serialize(index_value) for index_value in index.f(v))
+                value += (steppingpack.dump_json(index.f(v)),)
         value += (count,)
         values.append(value)
 
@@ -152,14 +153,14 @@ def _get_all(
     table_name = z_sql.table_name
 
     if not isinstance(match, MatchAll):
-        match_identities = [make_identity(m) for m in match]
+        match_identities = [steppingpack.make_identity(m) for m in match]
         qry = f"SELECT data, c FROM {table_name} WHERE identity IN (SELECT value FROM json_array_elements_text(%s))"
         for data, c in z_sql.cur.execute(qry, (json.dumps(match_identities),)):
-            yield deserialize(z_sql.t, json.loads(data)), c
+            yield steppingpack.load(z_sql.t, data), c
     else:
         qry = f"SELECT data, c FROM {table_name}"
         for data, c in z_sql.cur.execute(qry):
-            yield deserialize(z_sql.t, json.loads(data)), c
+            yield steppingpack.load(z_sql.t, data), c
 
 
 def _get_by_key(
@@ -179,12 +180,12 @@ def _get_by_key(
     if not isinstance(match_keys, MatchAll):
         select_expression = ", ".join(to_each_value(index))
         on_expression = " AND ".join(f"{e} = __{i}" for i, e in enumerate(info.columns))
-        join_on = list[Serialized]()
+        join_on = list[steppingpack.ValueJSON]()
         for key in match_keys:
             if is_tuple:
-                join_on.append([serialize(k) for k in key])  # type: ignore
+                join_on.append([steppingpack.dump_json(k) for k in key])  # type: ignore
             else:
-                join_on.append([serialize(key)])
+                join_on.append([steppingpack.dump_json(key)])
         join_expression = f"JOIN (SELECT {select_expression} FROM json_array_elements(%s)) AS _ ON {on_expression}"
         params = (json.dumps(join_on),)
 
@@ -201,22 +202,19 @@ def _get_by_key(
 
         for row in z_sql.cur.execute(qry, params):
             key_data, data, count = row
-            data = json.loads(data)
             if not is_tuple:
                 key_data = key_data[0]
             yield (
-                deserialize(index.k, key_data),
-                deserialize(z_sql.t, data),
+                steppingpack.load(index.k, key_data),
+                steppingpack.load(z_sql.t, data),
                 count,
             )
 
 
 def to_each_value(index: Index[Any, Indexable]) -> list[str]:
     field_expressions = list[str]()
-    for i, [_, inner_type, __] in enumerate(
-        generic.split_index_tuple_types(index.fields, index.ascending, index.k)
-    ):
-        t = TYPE_MAP[inner_type]
+    for i, inner_type in enumerate(generic.index_info(TYPE_MAP, index).ks):
+        t = TYPE_MAP.get(inner_type)
         field_expression = "(value #>> '{" + str(i) + "}')"
         field_expressions.append(f"{field_expression}::{t} AS __{i}")
     return field_expressions

@@ -9,6 +9,8 @@ T = TypeVar("T")
 
 
 class DefaultDict(Generic[K, T]):
+    __slots__ = ("default_factory", "d")
+
     default_factory: Callable[[], T]
     d: immutables.Map[K, T]
 
@@ -30,10 +32,7 @@ class DefaultDict(Generic[K, T]):
         return self.d[k]
 
     def __bool__(self) -> bool:
-        return bool(len(self.d))
-
-    def __len__(self) -> int:
-        return len(self.d)
+        return bool(self.d)
 
     def __contains__(self, other: object) -> bool:
         return other in self.d
@@ -48,18 +47,17 @@ class DefaultDict(Generic[K, T]):
     def get(self, k: K, default: T) -> T:
         return self.d.get(k, default)
 
-    def copy(self) -> DefaultDict[K, T]:
+    def pop(self, k: K) -> DefaultDict[K, T]:
         out = DefaultDict[K, T](self.default_factory)
-        out.d = self.d
+        out.d = self.d.delete(k)
         return out
 
-    # mutatey
+    def set(self, k: K, v: T) -> DefaultDict[K, T]:
+        out = DefaultDict[K, T](self.default_factory)
+        out.d = self.d.set(k, v)
+        return out
 
-    def pop(self, k: K) -> None:
-        self.d = self.d.delete(k)
-
-    def __setitem__(self, k: K, v: T) -> None:
-        self.d = self.d.set(k, v)
-
-    def update(self, d: dict[K, T]) -> None:
-        self.d = self.d.update(d)
+    def update(self, d: dict[K, T]) -> DefaultDict[K, T]:
+        out = DefaultDict[K, T](self.default_factory)
+        out.d = self.d.update(d)
+        return out

@@ -33,3 +33,5 @@ _More to follow..._
 - How does performance look with read replica(s)?
 - Look into doing something like [pydantic-core](https://github.com/pydantic/pydantic-core) and rewriting hot code in Rust.
 - Build some entirely different storage layer, eg. using something new and trendy like [sled](https://github.com/spacejam/sled), or less trendy, like `lmdb`.
+- How quick is it in pypy?
+- Use a different SQLite adaptor, eg. [apsw](https://rogerbinns.github.io/apsw/pysqlite.html), or maybe even wrap a rust SQLite library.

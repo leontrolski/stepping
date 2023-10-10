@@ -8,15 +8,35 @@ from functools import cache
 from types import NoneType, UnionType
 from typing import TYPE_CHECKING, Any
 from typing import Literal as L
-from typing import TypeVar, dataclass_transform, get_args, get_origin, get_type_hints
+from typing import (
+    TypeVar,
+    Union,
+    cast,
+    dataclass_transform,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 from unittest.mock import ANY
 from uuid import UUID
 
 import ormsgpack
-import pydantic
 
-from stepping import types
-from stepping.zset import python as zset_python
+# fmt:off
+if TYPE_CHECKING:
+    from stepping import types
+    from stepping.zset import python as zset_python
+HAS_IMPORTED = False
+def _import() -> None:  # only import at run-time to prevent cycles
+    global HAS_IMPORTED
+    if HAS_IMPORTED:
+        return
+    global types
+    global zset_python
+    from stepping import types as types
+    from stepping.zset import python as zset_python
+    HAS_IMPORTED = True
+# fmt: on
 
 
 def dump(o: Value) -> bytes:
@@ -28,15 +48,58 @@ def dump(o: Value) -> bytes:
     return ormsgpack.packb(dumped_python, option=ormsgpack.OPT_UTC_Z)
 
 
-def load(t: type[TValue], b: bytes) -> TValue:
+def dump_python(o: Value) -> ValuePython:
+    if hasattr(o, "st_bytes") and isinstance(o.st_bytes, bytes):  # type: ignore
+        return ormsgpack.unpackb(o.st_bytes)  # type: ignore
+
+    _import()
+    if o is None or isinstance(o, (str, int, float, bool, date, datetime, UUID, Enum)):
+        return o
+    if isinstance(o, tuple):
+        return [dump_python(v) for v in o]
+    if isinstance(o, frozenset):
+        # TODO: these sorteds aren't safe for union types
+        return sorted(dump_python(v) for v in o)  # type: ignore[type-var]
+    if isinstance(o, zset_python.ZSetPython):
+        return sorted([dump_python(v), c] for v, c in o.iter())  # type: ignore[return-value]
+    if isinstance(o, types.Pair):
+        return [dump_python(o.left), dump_python(o.right)]
+    if isinstance(o, Data):
+        return [dump_python(getattr(o, f)) for f in o.st_field_names]
+    raise NotImplementedError(f"No handler for value: {o}")
+
+
+def dump_json(o: Value) -> ValueJSON:
+    dumped_python = dump_python(o)
+    dumped_bytes = ormsgpack.packb(dumped_python)
+    dumped_json: ValueJSON = ormsgpack.unpackb(dumped_bytes)
+    return dumped_json
+
+
+def load(t: type[TValue], o: bytes | ValueJSON) -> TValue:
     schema = make_schema(t)  # type: ignore[arg-type]
+    if isinstance(o, bytes):
+        o = ormsgpack.unpackb(o)
+    return _load(schema, o)  # type: ignore
 
-    if id(schema) not in _SCHEMA_ID_D_CACHE:
-        _SCHEMA_ID_D_CACHE[id(schema)] = _s_to_d(schema)
-    d_schema = _SCHEMA_ID_D_CACHE[id(schema)]
 
-    o = ormsgpack.unpackb(b)
-    return load_python(d_schema, o)  # type: ignore
+def make_identity(n: Value | tuple[Value, ...]) -> str:
+    _import()
+    if isinstance(n, (int, float, str, bool, UUID)) or n is None:
+        return str(n)
+    if isinstance(n, (date, datetime)):
+        return n.isoformat()
+    if isinstance(n, frozenset):
+        return ",".join(make_identity(m) for m in sorted(n))  # type: ignore[type-var]
+    if isinstance(n, tuple):
+        return ",".join(make_identity(m) for m in n)
+    if isinstance(n, (types.Pair, zset_python.ZSetPython)):
+        md5 = hashlib.md5()
+        md5.update(dump(n))
+        return str(UUID(md5.hexdigest()))
+    if isinstance(n, Data):
+        return str(n.st_identifier)
+    raise RuntimeError(f"Value of unknown type: {n}")
 
 
 class Meta(type):
@@ -45,10 +108,18 @@ class Meta(type):
         if cls.__module__ == "stepping.steppingpack":  # skip anything in this module
             return cls
         cls = dataclass(kw_only=True, order=True)(cls)
-        make_schema(cls)  # immediately make schema and cache
         cls.__hash__ = lambda self: self.st_hash  # type: ignore
         cls.st_field_names = tuple(f.name for f in fields(cls))  # type: ignore[arg-type]
         return cls
+
+
+def hash_self(self: Value) -> tuple[bytes, int, UUID]:
+    st_bytes = dump(self)
+    md5 = hashlib.md5()
+    st_hash = hash(st_bytes)
+    md5.update(st_bytes)
+    st_identifier = UUID(md5.hexdigest())
+    return st_bytes, st_hash, st_identifier
 
 
 @dataclass_transform(kw_only_default=True)
@@ -59,15 +130,21 @@ class Data(metaclass=Meta):
     st_field_names: tuple[str, ...] = field(init=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:
-        self.st_bytes = dump(self)
-        md5 = hashlib.md5()
-        self.st_hash = hash(self.st_bytes)
-        md5.update(self.st_bytes)
-        self.st_identifier = UUID(md5.hexdigest())
+        make_schema(self.__class__)  # immediately make schema and cache
+        self.st_bytes, self.st_hash, self.st_identifier = hash_self(self)
+
+
+_TYPE_MAP: dict[type[Value], SType | None] = {}
 
 
 @cache
 def make_schema(t: type[Value] | None) -> SType:
+    # Handle recursion
+    if t in _TYPE_MAP:
+        return t
+    _TYPE_MAP[t] = None  # type: ignore
+
+    _import()
     args = get_args(t)
     origin: type | None = get_origin(t)
     if origin is None:
@@ -97,9 +174,10 @@ def make_schema(t: type[Value] | None) -> SType:
         )
         schema = SUnion(type="enum", options=literals)
     elif issubclass(origin, tuple):
-        (u, ellipsis) = args
-        assert ellipsis is ...
-        schema = STuple(value=make_schema(u))
+        if len(args) == 2 and args[1] is ...:
+            schema = STuple(values=(make_schema(args[0]),), many=True)
+        else:
+            schema = STuple(values=tuple(make_schema(u) for u in args), many=False)
     elif issubclass(origin, frozenset):
         (u,) = args
         schema = SFrozenset(value=make_schema(u))
@@ -113,7 +191,7 @@ def make_schema(t: type[Value] | None) -> SType:
         options = tuple(make_schema(n) for n in args)
         seen_discriminants = set[str]()
         for option in options:
-            if isinstance(option, SAtom):
+            if isinstance(option, (SAtom, STuple)):
                 continue
             elif isinstance(option, SData):
                 d = option.discriminant
@@ -129,7 +207,8 @@ def make_schema(t: type[Value] | None) -> SType:
         type_map = get_type_hints(t)
         pairs = tuple[SDataPair, ...]()
         discriminant = None
-        for field in fields(t):  # type: ignore[arg-type]
+        discriminant_index = -1
+        for i, field in enumerate(fields(t)):  # type: ignore[arg-type]
             u = make_schema(type_map[field.name])
             default = SNoValue()
             if field.default is not MISSING:
@@ -137,12 +216,18 @@ def make_schema(t: type[Value] | None) -> SType:
             if field.name == DISCRIMINANT_FIELD_NAME:
                 assert isinstance(default, str)
                 discriminant = default
+                discriminant_index = i
             pairs += (SDataPair(name=field.name, value=u, default=default),)
-        schema = SData(pairs=pairs, discriminant=discriminant)
+        schema = SData(
+            pairs=pairs,
+            discriminant=discriminant,
+            discriminant_index=discriminant_index,
+        )
     else:
         raise NotImplementedError(f"No handler for type: {t}")
 
-    schema._original_cls = t
+    schema.st_original_cls = t
+    _TYPE_MAP[t] = schema  # type: ignore
     return schema
 
 
@@ -155,15 +240,22 @@ def _assert_atom(s: SType) -> SAtom:
 DISCRIMINANT_FIELD_NAME = "st_discriminant"
 
 
-class _SBase(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(extra="forbid", frozen=True)
-    _original_cls: type[Value] | None = ANY  # makes testing easier
+@dataclass(kw_only=True)
+class _SBase:
+    st_original_cls: type[Value] | None = field(
+        init=False,
+        compare=False,
+        repr=False,
+        default_factory=lambda: ANY,  # makes testing easier
+    )
 
 
+@dataclass(kw_only=True)
 class SNoValue(_SBase):
     type: L["novalue"] = "novalue"
 
 
+@dataclass(kw_only=True)
 class SAtom(_SBase):
     type: (
         L["str"]
@@ -177,80 +269,92 @@ class SAtom(_SBase):
     )
 
 
+@dataclass(kw_only=True)
 class SLiteral(_SBase):
     type: L["literal"] = "literal"
     value: SAtom
     literal: Atom
 
 
+@dataclass(kw_only=True)
 class STuple(_SBase):
     type: L["tuple"] = "tuple"
-    value: SType
+    values: tuple[SType, ...]
+    many: bool
 
 
+@dataclass(kw_only=True)
 class SFrozenset(_SBase):
     type: L["frozenset"] = "frozenset"
     value: SType
 
 
+@dataclass(kw_only=True)
 class SZSet(_SBase):
     type: L["zset"] = "zset"
     value: SType
 
 
+@dataclass(kw_only=True)
 class SPair(_SBase):
     type: L["pair"] = "pair"
     left: SType
     right: SType
 
 
+@dataclass(kw_only=True)
 class SUnion(_SBase):
     type: L["union"] | L["enum"]  # if enum, we will convert to enum on deserializing
     options: tuple[SType, ...]
 
 
+@dataclass(kw_only=True)
 class SDataPair(_SBase):
     type: L["pair"] = "pair"
     name: str
     value: SType
-    default: Atom | SNoValue = SNoValue()
+    default: Atom | SNoValue = field(default_factory=SNoValue)
 
 
+@dataclass(kw_only=True)
 class SData(_SBase):
     type: L["data"] = "data"
     pairs: tuple[SDataPair, ...]  # note these are _ordered_
     discriminant: str | None = None
+    discriminant_index: int = -1
 
 
 Atom = str | int | float | bool | None | date | datetime | UUID | Enum
-Value = (
-    Atom
-    | tuple["Value", ...]
-    | frozenset["Value"]
-    | zset_python.ZSetPython["Value"]
-    | types.Pair["Value", "Value"]
-    | Data
-)
+Value = Union[
+    Atom,
+    tuple["Value", ...],
+    frozenset["Value"],
+    "zset_python.ZSetPython[Value]",
+    "types.Pair[Value, Value]",
+    Data,
+]
+ValuePython = Atom | list["ValuePython"]
+ValueJSON = str | int | float | bool | None | list["ValueJSON"]
 TValue = TypeVar("TValue", bound=Value)
-SType = SAtom | SLiteral | STuple | SFrozenset | SZSet | SPair | SUnion | SData
+SType = (
+    SAtom
+    | SLiteral
+    | STuple
+    | SFrozenset
+    | SZSet
+    | SPair
+    | SUnion
+    | SData
+    # In the case of recursive types, we look this up in `_TYPE_MAP`
+    | type[Value]
+)
 
 
-def dump_python(o: Value) -> Any:
-    if o is None or isinstance(o, (str, int, float, bool, date, datetime, UUID, Enum)):
-        return o
-    if isinstance(o, (frozenset, tuple)):
-        return sorted(dump_python(v) for v in o)
-    if isinstance(o, zset_python.ZSetPython):
-        return sorted((dump_python(v), c) for v, c in o.iter())
-    if isinstance(o, types.Pair):
-        return (dump_python(o.left), dump_python(o.right))
-    if isinstance(o, Data):
-        return [dump_python(getattr(o, f)) for f in o.st_field_names]
-    raise NotImplementedError(f"No handler for value: {o}")
-
-
-def load_python(s: DType, o: Value) -> Any:
-    if type(s) is DAtom:  # quicker than isinstance for pydantic classes
+def _load(s: SType, o: ValueJSON) -> Value:
+    _import()
+    if type(s) is SAtom:  # quicker than isinstance
+        if isinstance(o, list):
+            raise ValueError
         if s.type == "date":
             if TYPE_CHECKING:
                 assert isinstance(o, str)
@@ -264,28 +368,33 @@ def load_python(s: DType, o: Value) -> Any:
                 assert isinstance(o, str)
             return UUID(o)
         return o
-    if type(s) is DLiteral:
-        return load_python(s.value, o)
-    if type(s) is DTuple:
+    if type(s) is SLiteral:
+        return _load(s.value, o)
+    if type(s) is STuple:
         if TYPE_CHECKING:
             assert isinstance(o, list)
-        return tuple(load_python(s.value, v) for v in o)
-    if type(s) is DFrozenset:
+        if s.many:
+            return tuple(_load(s.values[0], v) for v in o)
+        else:
+            assert len(o) == len(s.values)
+            return tuple(_load(value, v) for value, v in zip(s.values, o))
+    if type(s) is SFrozenset:
         if TYPE_CHECKING:
             assert isinstance(o, list)
-        return frozenset(load_python(s.value, v) for v in o)
-    if type(s) is DZSet:
+        return frozenset(_load(s.value, v) for v in o)
+    if type(s) is SZSet:
         if TYPE_CHECKING:
             assert isinstance(o, list)
-        return zset_python.ZSetPython(iter(o))
-    if type(s) is DPair:
+        l = cast(list[tuple[ValueJSON, int]], o)
+        return zset_python.ZSetPython((_load(s.value, v), c) for v, c in l)
+    if type(s) is SPair:
         if TYPE_CHECKING:
             assert isinstance(o, list)
         return types.Pair(
-            left=load_python(s.left, o[0]),
-            right=load_python(s.right, o[1]),
+            left=_load(s.left, o[0]),
+            right=_load(s.right, o[1]),
         )
-    if type(s) is DUnion:
+    if type(s) is SUnion:
         if s.type == "enum":
             if TYPE_CHECKING:
                 assert isinstance(o, (int, str))
@@ -294,140 +403,60 @@ def load_python(s: DType, o: Value) -> Any:
                 )
             return s.st_original_cls(o)
         return _load_union(s.options, o)
-    if type(s) is DData:
+    if type(s) is SData:
         if TYPE_CHECKING:
             assert isinstance(o, list)
             assert s.st_original_cls is not None and is_dataclass(s.st_original_cls)
-        kw = {pair.name: load_python(pair.value, v) for pair, v in zip(s.pairs, o)}
-        return s.st_original_cls(**kw)
+        kw = {pair.name: _load(pair.value, v) for pair, v in zip(s.pairs, o)}
+        return s.st_original_cls(**kw)  # type: ignore[return-value]
+    # Handle recursive types
+    if s in _TYPE_MAP:
+        s_inner = _TYPE_MAP[s]  # type: ignore[index]
+        assert s_inner is not None
+        return _load(s_inner, o)
 
     raise NotImplementedError(f"No handler for schema: {s}")
 
 
-def _load_union(schemas: tuple[DType, ...], o: Value) -> Any:
-    atoms = list[DAtom]()
-    data = list[DData]()
+def _load_union(schemas: tuple[SType, ...], o: ValueJSON) -> Value:
+    atoms = list[SAtom]()
+    tuples = list[STuple]()
+    data = list[SData]()
     for s in schemas:
-        if isinstance(s, DAtom):
+        if isinstance(s, SAtom):
             atoms.append(s)
-        elif isinstance(s, DData):
+        elif isinstance(s, STuple):
+            tuples.append(s)
+        elif isinstance(s, SData):
             data.append(s)
         else:
             raise NotImplementedError("Only implements Unions for Atoms and Data")
 
     for s in atoms:
         try:
-            return load_python(s, o)
+            return _load(s, o)
+        except ValueError:
+            pass
+    for s in tuples:
+        try:
+            return _load(s, o)
         except ValueError:
             pass
     for s in data:
         assert isinstance(o, list)
         if o[s.discriminant_index] == s.discriminant:
-            return load_python(s, o)
+            return _load(s, o)
 
     raise RuntimeError(f"Unable to deserialize given schemas: {schemas}")
 
 
-# Irritating duplication for performance
+def serialize_schema(schema: SType) -> bytes:
+    import pickle
+
+    return pickle.dumps(schema)
 
 
-def _s_to_d(s: SType) -> DType:
-    s_d_map = {
-        SAtom: DAtom,
-        SLiteral: DLiteral,
-        STuple: DTuple,
-        SFrozenset: DFrozenset,
-        SZSet: DZSet,
-        SPair: DPair,
-        SUnion: DUnion,
-        SDataPair: DDataPair,
-        SData: DData,
-    }
-    kwargs: dict[str, Any] = {"st_original_cls": s._original_cls}
-    for f in s.model_fields:
-        sub = getattr(s, f)
-        if isinstance(sub, SNoValue):
-            kwargs[f] = DNoValue()
-        elif isinstance(sub, _SBase):
-            kwargs[f] = _s_to_d(sub)  # type:ignore[arg-type]
-        elif isinstance(sub, tuple):
-            kwargs[f] = tuple(_s_to_d(n) for n in sub)
-        else:
-            kwargs[f] = sub
-    return s_d_map[type(s)](**kwargs)  # type: ignore
+def deserialize_schema(b: bytes) -> SType:
+    import pickle
 
-
-@dataclass(slots=True)
-class _DBase:
-    type: str
-    st_original_cls: type[Value]  # type: ignore
-
-
-@dataclass(slots=True, frozen=True)
-class DNoValue:
-    ...
-
-
-@dataclass(slots=True)
-class DAtom(_DBase):
-    ...
-
-
-@dataclass(slots=True)
-class DLiteral(_DBase):
-    value: DAtom
-    literal: Atom
-
-
-@dataclass(slots=True)
-class DTuple(_DBase):
-    value: DType
-
-
-@dataclass(slots=True)
-class DFrozenset(_DBase):
-    value: DType
-
-
-@dataclass(slots=True)
-class DZSet(_DBase):
-    value: DType
-
-
-@dataclass(slots=True)
-class DPair(_DBase):
-    left: DType
-    right: DType
-
-
-@dataclass(slots=True)
-class DUnion(_DBase):
-    options: tuple[DType, ...]
-
-
-@dataclass(slots=True)
-class DDataPair(_DBase):
-    name: str
-    value: DType
-    default: Atom | DNoValue = DNoValue()
-
-
-@dataclass(slots=True)
-class DData(_DBase):
-    pairs: tuple[DDataPair, ...]  # note these are _ordered_
-    discriminant: str | None = None
-    discriminant_index: int = -1
-
-    def __post_init__(self) -> None:
-        self.discriminant_index = next(
-            (
-                i
-                for i, pair in enumerate(self.pairs)
-                if pair.name == DISCRIMINANT_FIELD_NAME
-            ),
-            -1,
-        )
-
-
-DType = DAtom | DLiteral | DTuple | DFrozenset | DZSet | DPair | DUnion | DData
-_SCHEMA_ID_D_CACHE = dict[int, DType]()
+    return pickle.loads(b)  # type: ignore[no-any-return]

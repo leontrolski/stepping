@@ -1,5 +1,6 @@
 import enum
 from datetime import UTC, date, datetime
+from unittest.mock import ANY
 from uuid import UUID
 
 import pytest
@@ -55,6 +56,14 @@ class DataE(steppingpack.Data):
     o: Pair[str, date]
 
 
+class DataF(steppingpack.Data):
+    a: tuple[str, float]
+
+
+class DataG(steppingpack.Data):
+    a: tuple["DataG", ...]
+
+
 def test_typing() -> None:
     Foo(bar=1)
     # Foo(1)
@@ -80,16 +89,23 @@ def test_make_schema_enum() -> None:
 
 def test_make_schema_composite() -> None:
     assert steppingpack.make_schema(tuple[int, ...]) == steppingpack.STuple(
-        type="tuple", value=steppingpack.SAtom(type="int")
+        values=(steppingpack.SAtom(type="int"),), many=True
     )
     assert steppingpack.make_schema(tuple[EnumA, ...]) == steppingpack.STuple(
-        value=steppingpack.SUnion(
-            type="enum",
-            options=(
-                steppingpack.SLiteral(value=steppingpack.SAtom(type="int"), literal=1),
-                steppingpack.SLiteral(value=steppingpack.SAtom(type="int"), literal=2),
+        values=(
+            steppingpack.SUnion(
+                type="enum",
+                options=(
+                    steppingpack.SLiteral(
+                        value=steppingpack.SAtom(type="int"), literal=1
+                    ),
+                    steppingpack.SLiteral(
+                        value=steppingpack.SAtom(type="int"), literal=2
+                    ),
+                ),
             ),
         ),
+        many=True,
     )
     assert steppingpack.make_schema(frozenset[str]) == steppingpack.SFrozenset(
         value=steppingpack.SAtom(type="str")
@@ -116,15 +132,18 @@ def test_make_schema_data() -> None:
             steppingpack.SDataPair(
                 name="many",
                 value=steppingpack.STuple(
-                    value=steppingpack.SData(
-                        pairs=(
-                            steppingpack.SDataPair(
-                                name="a",
-                                value=steppingpack.SAtom(type="str"),
-                                default=steppingpack.SNoValue(),
+                    values=(
+                        steppingpack.SData(
+                            pairs=(
+                                steppingpack.SDataPair(
+                                    name="a",
+                                    value=steppingpack.SAtom(type="str"),
+                                    default=steppingpack.SNoValue(),
+                                ),
                             ),
                         ),
                     ),
+                    many=True,
                 ),
             ),
         ),
@@ -150,6 +169,7 @@ def test_make_schema_union_of_data() -> None:
                     ),
                 ),
                 discriminant="DataC",
+                discriminant_index=0,
             ),
             steppingpack.SData(
                 type="data",
@@ -166,6 +186,7 @@ def test_make_schema_union_of_data() -> None:
                     ),
                 ),
                 discriminant="DataD",
+                discriminant_index=0,
             ),
         ),
     )
@@ -195,6 +216,15 @@ def test_dump_basic() -> None:
     thereandback(datetime, datetime(2022, 1, 3, tzinfo=UTC))
     thereandback(UUID, UUID("4c6c2692-6731-426d-b2c0-d08e672c8678"))
     thereandback(EnumA, EnumA.one)
+    thereandback(DataF, DataF(a=("3", 3.14)))
+    thereandback(DataF, DataF(a=("3", 3.0)))
+
+
+def test_serialize_schema() -> None:
+    schema = steppingpack.make_schema(DataE)
+    serialized = steppingpack.serialize_schema(schema)
+    back_out = steppingpack.deserialize_schema(serialized)
+    assert schema == back_out
 
 
 def test_all() -> None:
@@ -233,3 +263,22 @@ def test_all() -> None:
         for _ in range(1000):
             thereandback(DataE, d)
     pr.dump_stats("steppingpack.prof")
+
+
+def test_recursive() -> None:
+    schema = steppingpack.make_schema(DataG)
+    assert schema == steppingpack.SData(
+        pairs=(
+            steppingpack.SDataPair(
+                name="a",
+                value=steppingpack.STuple(values=(ANY,), many=True),
+            ),
+        ),
+    )
+    d = DataG(a=(DataG(a=()), DataG(a=(DataG(a=()),))))
+    dumped = steppingpack.dump(d)
+    assert steppingpack.load(DataG, dumped)
+
+    serialized = steppingpack.serialize_schema(schema)
+    back_out = steppingpack.deserialize_schema(serialized)
+    assert schema == back_out

@@ -52,8 +52,8 @@ def test_raw_sql_2(postgres_conn: st.ConnPostgres) -> None:
 
 
 Row = st.Pair[int, int]
-on_left = st.pick_index(Row, lambda row: row.right)
-on_right = st.pick_index(Row, lambda row: row.left)
+on_left = st.Index.pick(Row, lambda row: row.right)
+on_right = st.Index.pick(Row, lambda row: row.left)
 
 
 def _tc_map(p: st.Pair[Row, Row]) -> Row:
