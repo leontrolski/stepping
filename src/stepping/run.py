@@ -184,18 +184,14 @@ class Action(Generic[T, V_co]):
 
     def insert(self, *inputs: T, time: Time = Time()) -> V_co:
         input_zsets = list[Any]()
-        input = ZSetPython[T]()
-        for n in inputs:
-            input += ZSetPython({n: 1})
+        input = ZSetPython[T]((n, 1) for n in inputs)
         for j, _ in enumerate(self.g.input):
             input_zsets.append(input if self.i == j else ZSetPython[Any]())
         return iteration(self.store, self.g, tuple(input_zsets), time=time)  # type: ignore[return-value,arg-type]
 
     def remove(self, *inputs: T, time: Time = Time()) -> V_co:
         input_zsets = list[Any]()
-        input = ZSetPython[T]()
-        for n in inputs:
-            input += ZSetPython({n: -1})
+        input = ZSetPython[T]((n, -1) for n in inputs)
         for j, _ in enumerate(self.g.input):
             input_zsets.append(input if self.i == j else ZSetPython[Any]())
         return iteration(self.store, self.g, tuple(input_zsets), time=time)  # type: ignore[return-value,arg-type]

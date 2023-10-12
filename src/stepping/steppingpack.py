@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import MISSING, dataclass, field, fields, is_dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from enum import Enum
 from functools import cache
 from types import NoneType, UnionType
@@ -53,12 +53,14 @@ def dump_python(o: Value) -> ValuePython:
         return ormsgpack.unpackb(o.st_bytes)  # type: ignore
 
     _import()
-    if o is None or isinstance(o, (str, int, float, bool, date, datetime, UUID, Enum)):
+    if o is None or isinstance(o, (str, int, float, bool, date, UUID, Enum)):
         return o
+    if isinstance(o, datetime):
+        return o.astimezone(timezone.utc)
     if isinstance(o, tuple):
         return [dump_python(v) for v in o]
     if isinstance(o, frozenset):
-        # TODO: these sorteds aren't safe for union types
+        # Warning: these sorteds aren't safe for union types
         return sorted(dump_python(v) for v in o)  # type: ignore[type-var]
     if isinstance(o, zset_python.ZSetPython):
         return sorted([dump_python(v), c] for v, c in o.iter())  # type: ignore[return-value]
@@ -69,9 +71,8 @@ def dump_python(o: Value) -> ValuePython:
     raise NotImplementedError(f"No handler for value: {o}")
 
 
-def dump_json(o: Value) -> ValueJSON:
-    dumped_python = dump_python(o)
-    dumped_bytes = ormsgpack.packb(dumped_python)
+def dump_indexable(o: types.Indexable) -> ValueJSON:
+    dumped_bytes = ormsgpack.packb(o)
     dumped_json: ValueJSON = ormsgpack.unpackb(dumped_bytes)
     return dumped_json
 
@@ -83,23 +84,25 @@ def load(t: type[TValue], o: bytes | ValueJSON) -> TValue:
     return _load(schema, o)  # type: ignore
 
 
-def make_identity(n: Value | tuple[Value, ...]) -> str:
+IDENTITYLESS = (int, float, str, bool, UUID, date, datetime)
+
+
+def make_identity(o: Value | tuple[Value, ...]) -> bytes:
     _import()
-    if isinstance(n, (int, float, str, bool, UUID)) or n is None:
-        return str(n)
-    if isinstance(n, (date, datetime)):
-        return n.isoformat()
-    if isinstance(n, frozenset):
-        return ",".join(make_identity(m) for m in sorted(n))  # type: ignore[type-var]
-    if isinstance(n, tuple):
-        return ",".join(make_identity(m) for m in n)
-    if isinstance(n, (types.Pair, zset_python.ZSetPython)):
+
+    assert not isinstance(o, IDENTITYLESS)
+    if isinstance(o, (tuple, frozenset)):
         md5 = hashlib.md5()
-        md5.update(dump(n))
-        return str(UUID(md5.hexdigest()))
-    if isinstance(n, Data):
-        return str(n.st_identifier)
-    raise RuntimeError(f"Value of unknown type: {n}")
+        for n in o if isinstance(o, tuple) else sorted(o):  # type: ignore[type-var]
+            md5.update(dump(n))
+        return md5.digest()
+    if isinstance(o, (types.Pair, zset_python.ZSetPython)):
+        md5 = hashlib.md5()
+        md5.update(dump(o))
+        return md5.digest()
+    if isinstance(o, Data):
+        return o.st_identifier
+    raise RuntimeError(f"Value of unknown type: {o}")
 
 
 class Meta(type):
@@ -113,12 +116,12 @@ class Meta(type):
         return cls
 
 
-def hash_self(self: Value) -> tuple[bytes, int, UUID]:
+def hash_self(self: Value) -> tuple[bytes, int, bytes]:
     st_bytes = dump(self)
     md5 = hashlib.md5()
     st_hash = hash(st_bytes)
     md5.update(st_bytes)
-    st_identifier = UUID(md5.hexdigest())
+    st_identifier = md5.digest()
     return st_bytes, st_hash, st_identifier
 
 
@@ -126,7 +129,7 @@ def hash_self(self: Value) -> tuple[bytes, int, UUID]:
 class Data(metaclass=Meta):
     st_bytes: bytes = field(init=False, compare=False, repr=False)
     st_hash: int = field(init=False, compare=False, repr=False)
-    st_identifier: UUID = field(init=False, compare=False, repr=False)
+    st_identifier: bytes = field(init=False, compare=False, repr=False)
     st_field_names: tuple[str, ...] = field(init=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:

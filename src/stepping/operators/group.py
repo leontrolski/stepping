@@ -23,21 +23,21 @@ def group(a: ZSet[T], *, by: Index[T, K]) -> Grouped[ZSet[T], K]:
 
 @builder.vertex(OperatorKind.flatten)
 def flatten(a: Grouped[ZSet[T], K]) -> ZSet[Pair[T, K]]:
-    out = ZSetPython[Pair[T, K]]()
-    for z, key in a.iter():
-        for v, count in z.iter():
-            out += ZSetPython({Pair(v, key): count})
-    return out
+    return ZSetPython[Pair[T, K]](
+        (Pair(v, key), count) for z, key in a.iter() for v, count in z.iter()
+    )
 
 
 @builder.vertex(OperatorKind.make_indexed_pairs)
 def make_indexed_pairs(
     a: Grouped[ZSet[T], K], *, index: Index[Pair[T, K], K]
 ) -> ZSet[Pair[T, K]]:
-    z = ZSetPython[Pair[T, K]](indexes=(index,))
-    for inner, key in a.iter():
-        z += functions.map(inner, lambda value: Pair(value, key))
-    return z
+    out = ZSetPython[Pair[T, K]](indexes=(index,))
+    return out + ZSetPython[Pair[T, K]](
+        (Pair(value, key), count)
+        for inner, key in a.iter()
+        for value, count in inner.iter()
+    )
 
 
 @builder.vertex(OperatorKind.make_grouped)

@@ -22,16 +22,11 @@ _More to follow..._
 ## Future Ideas
 
 - Profile with loads of data, how do insert times grow over time?
-- **Parallelise inserts**, getting this right with transactional behaviour seems hard, where is the literature?
-- Other serialization options.
-  - Pickle.
-  - Custom Postgres types like [sqlski](https://github.com/leontrolski/sqlski/blob/master/sqlski/composite.py).
-  - Some JSON binary format (ideally with separate schema).
-  - Store as JSON Arrays not Objects and use the schema for keys.
-  - Compress the JSON. In SQLite, it is possible to do `conn.create_function("f", 1, f, deterministic=True)`, compression with `zstandard.ZstdCompressionDict(json.dumps(Resolved.model_json_schema()).encode())` compresses raw JSON by around half.
-- Note that non-JSON options would require writing extra columns for indexing.
 - How does performance look with read replica(s)?
-- Look into doing something like [pydantic-core](https://github.com/pydantic/pydantic-core) and rewriting hot code in Rust.
+- Look into doing something like [pydantic-core](https://github.com/pydantic/pydantic-core) and rewriting hot code in Rust. The main blocker for writing "ZSets in Rust" are probably:
+  - Adding `.st_bytes`, `.st_hash`, `.st_identifier` to `ZSetPython` and `Pair`. Can we do some crazy hashing with bitmaps or something where we update the hash as we increment/decrement counts?
+  - Should the underlying `immutabledict[K, T]` _also_ be an immutable btree.
+  - Some deep thought required with index ordering of `int`s, `float`s datetime (see `_btree.py`). Maybe we just split `K`s between those that can be ordered lexicographically and those that can't.
 - Build some entirely different storage layer, eg. using something new and trendy like [sled](https://github.com/spacejam/sled), or less trendy, like `lmdb`.
 - How quick is it in pypy?
 - Use a different SQLite adaptor, eg. [apsw](https://rogerbinns.github.io/apsw/pysqlite.html), or maybe even wrap a rust SQLite library.

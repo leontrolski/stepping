@@ -16,6 +16,7 @@ from stepping.types import (
     ZSet,
     get_annotation_zset,
 )
+from stepping.zset.python import ZSetPython
 
 
 def distinct_lifted(a: ZSet[T]) -> ZSet[T]:
@@ -70,6 +71,12 @@ def _f_sum(
     z: ZSet[T],
 ) -> TReducable:
     total = zero()
+
+    # Performance enhancement
+    if isinstance(total, ZSetPython):
+        counted = [pick_value(v) * count for v, count in z.iter()]
+        return ZSetPython((v, count) for n in counted for v, count in n.iter())  # type: ignore
+
     for v, count in z.iter():
         total += pick_value(v) * count
     return total

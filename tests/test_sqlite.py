@@ -13,7 +13,7 @@ from stepping.zset.sql import generic, sqlite
 
 def _flush(z: generic.ZSetSQL[Any]) -> None:
     z.upsert()
-    z.changes = ZSetPython[Any]()
+    z.changes = ()
 
 
 def dump_schema(conn: generic.ConnSQLite) -> str:

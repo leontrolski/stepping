@@ -23,32 +23,38 @@ mypy src tests
 
 ## Todos
 
-- See suggestions in `performance.md`.
-    - Avoid writing to identity if not Data
-    - Do the SQLite perf improvements.
-- Write up parallelize docs, update index docs (esp. API page), add `steppingpack` docs.
-    - Talk a lot about early commit mode and pitfalls.
-    - `time` as a `SEQUENCE?` - would come as part of stepping manager.
-    - Future? Need to think hard about how one could allow parallelism where you can guaranteee no phantom rows.
 - Make the graph a simple introspectable thing.
     - Use paths as names.
     - Make the Path contain the module names.
     - Make vertexes immutable, run `mypy`, fix.
     - Remember to update docs.
-- Replace operator kind with `normal`.
+- Docs - Write up parallelize docs, update index docs (esp. API page), add `steppingpack` docs.
+    - Talk a lot about early commit mode and pitfalls.
+    - `time` as a `SEQUENCE?` - would come as part of stepping manager.
+    - Write some more performance numbers.
+    - Future? Need to think hard about how one could allow parallelism where you can guaranteee no phantom rows.
+    - Quick example on the homepage? Something better to explain things.
+    - Mention adjusting `MAX_SLEEP_SECS`.
+    - Mention how failures impact the other commit mode.
+    - Go through every page and make sure nothing's changed.
 - Instead of `create_tables=True` can we emit SQL and write it.
-- In `iter_by_index`, use indexed `ZSetPython`.
-- Can `run.iteration` make nicer error messages?
-- Implement `isjsonschemasubset` for msgpack.
+- In `steppingpack`, use class name not class itself as key, or something, maybe index each of the schemas.
 - Write everything up, email the dbsp people from the original paper. In particular, ask question about why the incremental recursive stuff is different from the paper.
+
+## Nice-to-haves
+
+- In `interleave_changes`, use indexed `ZSetPython` under the hood.
+- Skip out the middle man with `Grouped` and just use an indexed `ZSet`? Does this lead to performance benefits in `st.group`?
+- Revisit `st.compile(...)`.
+- Can `run.iteration` make nicer error messages?
+- Support some more types with `steppingpack`, notably `time`.
+- Implement `isjsonschemasubset` for `steppingpack` as part of steppingmanager.
+- See suggestions in `performance.md`.
 - Python 3.12. Use built in `batched`. Can we use the new `Unpack` syntax for nicer action types?
-    - Special class for compound indexes - we can only have this once we have `TypeVarTuple`.
 - Look at 11.8 "Window aggregates"
 - Replace `integrate_delay` with a nice transform. Similarly, transform shared delays.
-- Test arbitrary depth grouped nesting and joining in a grouped setting (Does this _need_ doing?).
-- Replace `annotate_zset` with `__get_pydantic_core_schema__`.
-- Revisit `st.compile(...)`.
 - Decide whether to make `...SQL` classes protocols.
+- Test arbitrary depth grouped nesting and joining in a grouped setting (Does this even make sense to do?).
 
 # Uploading to Pypi
 

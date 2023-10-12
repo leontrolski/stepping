@@ -57,10 +57,10 @@ class StoreSQL:
     _current: dict[VertexUnaryDelay[Any, Any], generic.ZSetSQL[Any]]
     _changes: dict[VertexUnaryDelay[Any, Any], generic.ZSetSQL[Any]]
     _conn: generic.Conn
-    _by_table: dict[str, list[generic.ZSetSQL[Any]]]
+    _peers_by_table: dict[str, list[generic.ZSetSQL[Any]]]
 
     def register(self, value: generic.ZSetSQL[Any]) -> None:
-        self._by_table[value.table_name].append(value)
+        self._peers_by_table[value.table_name].append(value)
 
     # Called by subclasses
     @staticmethod
@@ -120,13 +120,13 @@ class StoreSQL:
     def flush(self, vertices: Iterable[VertexUnaryDelay[Any, Any]], time: Time) -> None:
         for vertex in vertices:
             value = self._changes[vertex]
-            changes = value.changes
             value.upsert()
+            changes = value.changes
             if time.input_time != -1:
                 value.set_last_update_time(time.input_time)
-            for peer in self._by_table[value.table_name]:
-                peer.changes -= changes
-            self._by_table[value.table_name] = [value]
+            for peer in self._peers_by_table[value.table_name]:
+                peer.changes = _remove_changes(peer.changes, changes)
+            self._peers_by_table[value.table_name] = [value]
 
         self._conn.commit()
 
@@ -183,6 +183,22 @@ def table_name(vertex: VertexUnaryDelay[Any, Any]) -> str:
     else:
         middle = [n[0] for n in middle]
     return "_".join(middle) + "_" + _hash(str(vertex), 6)
+
+
+def _remove_changes(
+    existing: tuple[ZSetPython[Any], ...], remove: tuple[ZSetPython[Any], ...]
+) -> tuple[ZSetPython[Any], ...]:
+    out = tuple[ZSetPython[Any], ...]()
+
+    for e in existing:
+        for r in remove:
+            if e is r:
+                remove = tuple(n for n in remove if n is not r)
+                break
+        else:
+            out += (e,)
+
+    return out + tuple(-n for n in remove)
 
 
 def pp_store(store: Store) -> None:

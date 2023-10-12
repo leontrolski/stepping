@@ -9,6 +9,7 @@ from typing import Any, Callable, Iterator, Self, get_args
 
 import psycopg
 
+from stepping import steppingpack
 from stepping.types import (
     MATCH_ALL,
     Index,
@@ -32,7 +33,7 @@ CurPostgres = psycopg.Cursor[Any]
 CurSQLite = sqlite3.Cursor
 Cur = CurPostgres | CurSQLite
 
-MAX_SLEEP_SECS = 5.0  # TODO: change me!
+MAX_SLEEP_SECS = 5.0
 # 1.3 means this grows exponentially, but fairly slowly
 SLEEP_SECS: list[float] = [0.00001 * 1.3**n for n in range(100)]
 SLEEP_SECS = [sleep_secs for sleep_secs in SLEEP_SECS if sleep_secs <= MAX_SLEEP_SECS]
@@ -44,7 +45,7 @@ class ZSetSQL(ZSetBodge[TSerializable]):
     t: type[TSerializable]
     table_name: str
     indexes: tuple[Index[TSerializable, Any], ...]
-    changes: ZSetPython[TSerializable] = field(default_factory=ZSetPython)
+    changes: tuple[ZSetPython[TSerializable], ...] = ()
     is_negative: bool = False
     register: Callable[[Self], None] = lambda _: None
 
@@ -56,6 +57,19 @@ class ZSetSQL(ZSetBodge[TSerializable]):
 
     def to_python(self) -> ZSetPython[TSerializable]:
         return ZSetPython(self.iter())
+
+    @property
+    def identity_is_data(self) -> bool:
+        return self.t in steppingpack.IDENTITYLESS
+
+    def consolidate_changes(self) -> ZSetPython[TSerializable]:
+        if not self.changes:
+            return ZSetPython[TSerializable]()
+        changes, *rest = self.changes
+        for other in rest:
+            changes += other
+        self.changes = (changes,)
+        return changes
 
     def wait_til_time(self, frontier: int) -> None:
         qry = f"SELECT t = {frontier} FROM last_update WHERE table_name = '{self.table_name}'"
@@ -77,7 +91,9 @@ class ZSetSQL(ZSetBodge[TSerializable]):
         return replace(self, is_negative=not self.is_negative)
 
     def __add__(self, other: ZSet[TSerializable]) -> Self:
-        changes = self.changes + ((-other) if self.is_negative else other)
+        other_python = ZSetPython[TSerializable]() + other
+        other_python = (-other_python) if self.is_negative else other_python
+        changes = self.changes + (other_python,)
         return replace(self, changes=changes)
 
     def iter(
@@ -88,16 +104,17 @@ class ZSetSQL(ZSetBodge[TSerializable]):
 
         neg = -1 if self.is_negative else 1
 
+        changes = self.consolidate_changes()
         seen_from_changes = set[tuple[TSerializable, int]]()
         for v, count in self.get_all(match):
-            change_count = self.changes.get_count(v)
+            change_count = changes.get_count(v)
             if change_count != 0:
                 seen_from_changes.add((v, change_count))
             count = count + change_count
             if count:
                 yield v, count * neg
 
-        for v, count in self.changes.iter(match):
+        for v, count in changes.iter(match):
             if (v, count) not in seen_from_changes:
                 yield v, count * neg
 
@@ -115,7 +132,8 @@ class ZSetSQL(ZSetBodge[TSerializable]):
         neg = -1 if self.is_negative else 1
         rows = self.get_by_key(index, match_keys)
 
-        for key, value, count in interleave_changes(rows, self.changes, index):
+        changes = self.consolidate_changes()
+        for key, value, count in interleave_changes(rows, changes, index):
             yield (key, value, count * neg)
 
     # Subclass methods
@@ -212,3 +230,12 @@ def interleave_changes(
             if b_value in b_counts[b_key]:
                 yield b_key, b_value, b_count
             b = next(b_iterator, None)
+
+
+def dump_key(
+    index: Index[Any, Any], key: Indexable
+) -> tuple[steppingpack.ValueJSON, ...]:
+    if index.is_composite:
+        return tuple(steppingpack.dump_indexable(k) for k in key)  # type: ignore
+    else:
+        return (steppingpack.dump_indexable(key),)

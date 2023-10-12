@@ -149,22 +149,12 @@ def _add(a: ZSetPython[T], b: ZSet[T], neg: bool = False) -> ZSetPython[T]:
             new_count = out._data[v] + count
             if new_count == 0:
                 out._data = out._data.pop(v)
-                for i, data_index in enumerate(out._data_indexes):
-                    out._data_indexes = (
-                        out._data_indexes[: i - 1] +
-                        (data_index.remove(v),) +
-                        out._data_indexes[i + 1 :]
-                    )
+                out._data_indexes = tuple(d.remove(v) for d in out._data_indexes)
             else:
                 out._data = out._data.set(v, new_count)
         else:
             new_count = count
             out._data = out._data.set(v, count)
-            for i, data_index in enumerate(out._data_indexes):
-                out._data_indexes = (
-                    out._data_indexes[: i - 1] +
-                    (data_index.add(v),) +
-                    out._data_indexes[i + 1 :]
-                )
+            out._data_indexes = tuple(d.add(v) for d in out._data_indexes)
 
     return out

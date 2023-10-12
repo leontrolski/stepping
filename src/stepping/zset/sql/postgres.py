@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Iterator
@@ -18,7 +17,6 @@ from stepping.types import (
     TSerializable,
     ZSet,
     batched,
-    is_type,
 )
 from stepping.zset.sql import generic
 
@@ -42,7 +40,7 @@ class ZSetPostgres(generic.ZSetSQL[TSerializable]):
         return _create_data_table(self)
 
     def upsert(self) -> None:
-        return _upsert(self, self.changes)
+        return _upsert(self, self.consolidate_changes())
 
     def get_by_key(
         self, index: Index[TSerializable, K], match_keys: frozenset[K] | MatchAll
@@ -83,10 +81,11 @@ def _create_data_table(z_sql: ZSetPostgres[Any]) -> None:
         for index in z_sql.indexes
         for column in generic.index_info(TYPE_MAP, index).columns_types
     )
+    data_column = "" if z_sql.identity_is_data else "data BYTEA NOT NULL,"
     qry = f"""
         CREATE TABLE {table_name} (
-            identity TEXT PRIMARY KEY,
-            data BYTEA NOT NULL,
+            identity BYTEA PRIMARY KEY,
+            {data_column}
             {index_columns}
             c INT NOT NULL
         )
@@ -113,24 +112,22 @@ def _upsert(z_sql: ZSetPostgres[TSerializable], z: ZSet[TSerializable]) -> None:
 
     values = list[tuple[Any, ...]]()
     for v, count in z.iter():
-        value: tuple[Any, ...] = (steppingpack.make_identity(v), steppingpack.dump(v))
+        value = tuple[Any, ...]()
+        if not z_sql.identity_is_data:
+            value += (steppingpack.make_identity(v),)
+        value += (steppingpack.dump(v),)
         for index in z_sql.indexes:
-            if index.is_composite:
-                value += tuple(
-                    steppingpack.dump_json(index_value) for index_value in index.f(v)
-                )
-            else:
-                value += (steppingpack.dump_json(index.f(v)),)
+            value += generic.dump_key(index, index.f(v))
         value += (count,)
         values.append(value)
 
     if not values:
         return
 
-    qs = "".join("%s," for _ in range(len(values[0]) - 3))
+    qs = ", ".join("%s" for _ in range(len(values[0])))
     for vs in batched(values, n=1000):
         qry = f"""
-            INSERT INTO {table_name} VALUES (%s, %s, {qs} %s)
+            INSERT INTO {table_name} VALUES ({qs})
             ON CONFLICT (identity)
             DO UPDATE SET
                 c = {table_name}.c + EXCLUDED.c
@@ -151,14 +148,19 @@ def _get_all(
     match: frozenset[TSerializable] | MatchAll = MATCH_ALL,
 ) -> Iterator[tuple[TSerializable, int]]:
     table_name = z_sql.table_name
+    data_column = "identity" if z_sql.identity_is_data else "data"
 
     if not isinstance(match, MatchAll):
-        match_identities = [steppingpack.make_identity(m) for m in match]
-        qry = f"SELECT data, c FROM {table_name} WHERE identity IN (SELECT value FROM json_array_elements_text(%s))"
-        for data, c in z_sql.cur.execute(qry, (json.dumps(match_identities),)):
+        if z_sql.identity_is_data:
+            hex_strings = (r"\x" + steppingpack.dump(m).hex() for m in match)
+        else:
+            hex_strings = (r"\x" + steppingpack.make_identity(m).hex() for m in match)
+        identity_literals = ", ".join(f"'{h}'::bytea" for h in hex_strings)
+        qry = f"SELECT {data_column}, c FROM {table_name} WHERE identity IN ({identity_literals})"
+        for data, c in z_sql.cur.execute(qry):
             yield steppingpack.load(z_sql.t, data), c
     else:
-        qry = f"SELECT data, c FROM {table_name}"
+        qry = f"SELECT {data_column}, c FROM {table_name}"
         for data, c in z_sql.cur.execute(qry):
             yield steppingpack.load(z_sql.t, data), c
 
@@ -168,7 +170,6 @@ def _get_by_key(
     index: Index[TSerializable, K],
     match_keys: frozenset[K] | MatchAll,
 ) -> Iterator[tuple[K, TSerializable, int]]:
-    is_tuple = is_type(index.k, tuple)
     table_name = z_sql.table_name
 
     info = generic.index_info(TYPE_MAP, index)
@@ -182,15 +183,13 @@ def _get_by_key(
         on_expression = " AND ".join(f"{e} = __{i}" for i, e in enumerate(info.columns))
         join_on = list[steppingpack.ValueJSON]()
         for key in match_keys:
-            if is_tuple:
-                join_on.append([steppingpack.dump_json(k) for k in key])  # type: ignore
-            else:
-                join_on.append([steppingpack.dump_json(key)])
+            join_on.append(list(generic.dump_key(index, key)))
         join_expression = f"JOIN (SELECT {select_expression} FROM json_array_elements(%s)) AS _ ON {on_expression}"
         params = (json.dumps(join_on),)
 
+    data_column = "identity" if z_sql.identity_is_data else "data"
     qry = f"""
-        SELECT json_build_array({key_expression}) AS key, data, c
+        SELECT json_build_array({key_expression}) AS key, {data_column}, c
         FROM {table_name}
         {join_expression}
         ORDER BY {order_by_expression}
@@ -202,7 +201,7 @@ def _get_by_key(
 
         for row in z_sql.cur.execute(qry, params):
             key_data, data, count = row
-            if not is_tuple:
+            if not index.is_composite:
                 key_data = key_data[0]
             yield (
                 steppingpack.load(index.k, key_data),
