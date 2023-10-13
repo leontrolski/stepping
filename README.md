@@ -23,12 +23,10 @@ mypy src tests
 
 ## Todos
 
-- Make the graph a simple introspectable thing.
-    - Use paths as names.
-    - Make the Path contain the module names.
-    - Make vertexes immutable, run `mypy`, fix.
-    - Remember to update docs.
+- Instead of `create_tables=True` can we emit SQL and write it.
+- In `steppingpack`, use class name not class itself as key, or something, maybe index each of the schemas.
 - Docs - Write up parallelize docs, update index docs (esp. API page), add `steppingpack` docs.
+    - Nice new graph repr and introspection.
     - Talk a lot about early commit mode and pitfalls.
     - `time` as a `SEQUENCE?` - would come as part of stepping manager.
     - Write some more performance numbers.
@@ -37,9 +35,8 @@ mypy src tests
     - Mention adjusting `MAX_SLEEP_SECS`.
     - Mention how failures impact the other commit mode.
     - Go through every page and make sure nothing's changed.
-- Instead of `create_tables=True` can we emit SQL and write it.
-- In `steppingpack`, use class name not class itself as key, or something, maybe index each of the schemas.
 - Write everything up, email the dbsp people from the original paper. In particular, ask question about why the incremental recursive stuff is different from the paper.
+
 
 ## Nice-to-haves
 

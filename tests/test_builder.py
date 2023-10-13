@@ -585,4 +585,4 @@ def test_compile_double() -> None:
         ret=ZSet[Pair[str, int]],
     )
     actual = builder.compile_generic(use_delay_indexed_pair, {}, signature, Path())
-    assert actual.output[0].v == ZSet[Pair[str, int]]
+    assert actual.vertices[actual.output[0]].v == ZSet[Pair[str, int]]

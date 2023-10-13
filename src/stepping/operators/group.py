@@ -1,3 +1,4 @@
+from dataclasses import replace
 from typing import Any
 
 from stepping import zset
@@ -102,10 +103,11 @@ def wrap_delay(
         ),
         path,
     )
-    for from_vertex, [to_vertex, i] in list(graph.internal):
+    for from_p, [to_p, i] in list(graph.internal):
+        to_vertex = graph.vertices[to_p]
         if to_vertex.operator_kind is OperatorKind.get_keys:
-            to_vertex.t = first_vertex.v
-            graph.internal.remove((from_vertex, (to_vertex, i)))
-            graph.internal.add((first_vertex, (to_vertex, i)))
+            graph.vertices[to_p] = replace(to_vertex, t=first_vertex.v)
+            graph.internal.remove((from_p, (to_p, i)))
+            graph.internal.add((first_vertex.path, (to_p, i)))
 
     return graph

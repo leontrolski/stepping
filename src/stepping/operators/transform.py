@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Generic, cast, get_args, get_origin, overload
 
 from stepping import types
@@ -10,6 +10,7 @@ from stepping.graph import (
     A2,
     Graph,
     OperatorKind,
+    Path,
     Port,
     Vertex,
     VertexBinary,
@@ -55,9 +56,9 @@ def replace_vertex(
     remove: VertexUnary[X, Y] | VertexBinary[X, Y, Z],
     replacement: Graph[A1[X], A1[Y]] | Graph[A2[X, Y], A1[Z]],
 ) -> Graph[T, V]:
-    assert remove.path not in [vertex.path for vertex, _ in graph.input]
-    assert remove.path not in [vertex.path for vertex in graph.output]
-    vertices = [vertex for vertex in graph.vertices if vertex != remove]
+    assert remove.path not in [vertex for vertex, _ in graph.input]
+    assert remove.path not in [vertex for vertex in graph.output]
+    vertices = [vertex for vertex in graph.vertices.values() if vertex != remove]
     if isinstance(remove, VertexUnary):
         assert len(replacement.input) == 1
     if isinstance(remove, VertexBinary):
@@ -66,24 +67,24 @@ def replace_vertex(
     (new_start,) = replacement.output
 
     internal = {vp for vp in graph.internal}
-    from_vertices = set[Vertex]()
+    from_paths = set[Path]()
     to_ports = set[Port]()
     for start, [end, i] in graph.internal:
-        if end == remove:
+        if end == remove.path:
             internal -= {(start, (end, i))}
-            from_vertices.add(start)
-        if start == remove:
+            from_paths.add(start)
+        if start == remove.path:
             internal -= {(start, (end, i))}
             to_ports.add((end, i))
 
-    for start in from_vertices:
+    for start in from_paths:
         for new_end_port in replacement.input:
             internal |= {(start, new_end_port)}
     for end_port in to_ports:
         internal |= {(new_start, end_port)}
 
     return Graph(
-        vertices=vertices + replacement.vertices,
+        vertices={v.path: v for v in vertices} | replacement.vertices,
         input=graph.input,
         internal=internal | replacement.internal,
         output=graph.output,
@@ -96,38 +97,39 @@ def remove_identities(graph: Graph[T, V]) -> Graph[T, V]:
     input = {vertex for vertex, _ in graph.input}
 
     remove: Vertex | None = None
-    for vertex in graph.vertices:
-        if vertex in graph.output or vertex in input:
+    for p in graph.vertices.keys():
+        if p in graph.output or p in input:
             continue
+        vertex = graph.vertices[p]
         if vertex.operator_kind is OperatorKind.identity:
             remove = vertex
 
     if remove is None:
         return graph
 
-    from_vertices = set[Vertex]()
+    from_paths = set[Path]()
     to_ports = set[Port]()
     for start, [end, i] in graph.internal:
-        if end == remove:
+        if end == remove.path:
             internal -= {(start, (end, i))}
-            from_vertices.add(start)
-        if start == remove:
+            from_paths.add(start)
+        if start == remove.path:
             internal -= {(start, (end, i))}
             to_ports.add((end, i))
 
-    for start in from_vertices:
+    for start in from_paths:
         for end_port in to_ports:
             internal |= {(start, end_port)}
 
     # assert from_vertices and to_ports
 
-    vertices = [vertex for vertex in graph.vertices if vertex != remove]
+    vertices = [vertex for vertex in graph.vertices.values() if vertex != remove]
 
     # We could do dataclasses.replace(...) here, but we don't want to
     # repeat the type checking in __post_init__.
     graph = deepcopy(graph)
     graph.internal = internal
-    graph.vertices = vertices
+    graph.vertices = {v.path: v for v in vertices}
     return graph
 
 
@@ -181,19 +183,24 @@ def lift_grouped(
     g = replace_non_zset_delays(g)
 
     g = deepcopy(g)
-    for vertex in g.vertices:
+    for p, vertex in list(g.vertices.items()):
         if isinstance(vertex, VertexUnary):
-            vertex.f = LiftFunctionGroupedUnary(vertex.f)
-            vertex.t = Grouped[vertex.t, k]  # type: ignore
-            vertex.v = Grouped[vertex.v, k]  # type: ignore
+            g.vertices[p] = replace(
+                vertex,
+                f=LiftFunctionGroupedUnary(vertex.f),
+                t=Grouped[vertex.t, k],  # type: ignore
+                v=Grouped[vertex.v, k],  # type: ignore
+            )
         elif isinstance(vertex, VertexBinary):
             if vertex.operator_kind is not OperatorKind.add:
                 raise RuntimeError("Can only lift ADD binary vertices to grouped")
-            vertex.f = LiftFunctionGroupedBinary(vertex.f)
-            vertex.t = Grouped[vertex.t, k]  # type: ignore
-            vertex.u = Grouped[vertex.u, k]  # type: ignore
-            vertex.v = Grouped[vertex.v, k]  # type: ignore
-
+            g.vertices[p] = replace(
+                vertex,
+                f=LiftFunctionGroupedBinary(vertex.f),
+                t=Grouped[vertex.t, k],  # type: ignore
+                u=Grouped[vertex.u, k],  # type: ignore
+                v=Grouped[vertex.v, k],  # type: ignore
+            )
     g = replace_grouped_delays(g)
     return g  # type: ignore
 
@@ -206,7 +213,7 @@ def _set_and_back(a: T, *, zero: Callable[[], T]) -> T:
 
 
 def replace_non_zset_delays(g: Graph[T, V]) -> Graph[T, V]:
-    for vertex in g.vertices:
+    for vertex in g.vertices.values():
         if not vertex.operator_kind is OperatorKind.delay:
             continue
         assert isinstance(vertex, VertexUnary)
@@ -228,10 +235,11 @@ def replace_non_zset_delays(g: Graph[T, V]) -> Graph[T, V]:
 
 
 def replace_grouped_delays(g: Graph[T, V]) -> Graph[T, V]:
-    first_vertex, _ = g.input[0]
+    first_p, _ = g.input[0]
+    first_vertex = g.vertices[first_p]
     first_vertex = cast(VertexUnary[Any, Grouped[Any, Any]], first_vertex)
 
-    for vertex in g.vertices:
+    for vertex in g.vertices.values():
         if not (
             isinstance(vertex, VertexUnary)
             and vertex.operator_kind is OperatorKind.delay
@@ -316,7 +324,8 @@ class IntegrateTilZeroTransformer:
     def transform(self, g: Graph[Any, Any]) -> Graph[Any, Any]:
         # Add an extra identity to the start that won't get removed by `remove_identities`
         assert len(g.input) == 1
-        [[input_vertex, i]] = g.input
+        [[input_p, i]] = g.input
+        input_vertex = g.vertices[input_p]
         extra_identity_vertex = VertexUnary(
             input_vertex.t,
             input_vertex.t,
@@ -325,13 +334,14 @@ class IntegrateTilZeroTransformer:
             lambda a: a,
         )
         g = deepcopy(g)
-        g.input = [(extra_identity_vertex, 0)]
-        g.vertices.append(extra_identity_vertex)
-        g.internal.add((extra_identity_vertex, (input_vertex, i)))
+        g.input = [(extra_identity_vertex.path, 0)]
+        g.vertices[extra_identity_vertex.path] = extra_identity_vertex
+        g.internal.add((extra_identity_vertex.path, (input_vertex.path, i)))
 
         # Add an extra vertex to the end that refers to the graph we were passed in
         assert len(g.output) == 1
-        output_vertex = g.output[0]
+        output_p = g.output[0]
+        output_vertex = g.vertices[output_p]
         integrate_til_zero_vertex = VertexUnaryIntegrateTilZero(
             output_vertex.v,
             output_vertex.v,
@@ -341,10 +351,10 @@ class IntegrateTilZeroTransformer:
             graph=g,
         )
         g = deepcopy(g)
-        g.input = [(extra_identity_vertex, 0)]
-        g.vertices.append(integrate_til_zero_vertex)
-        g.internal.add((output_vertex, (integrate_til_zero_vertex, 0)))
-        g.output = [integrate_til_zero_vertex]
+        g.input = [(extra_identity_vertex.path, 0)]
+        g.vertices[integrate_til_zero_vertex.path] = integrate_til_zero_vertex
+        g.internal.add((output_vertex.path, (integrate_til_zero_vertex.path, 0)))
+        g.output = [integrate_til_zero_vertex.path]
         return g
 
 
@@ -382,7 +392,7 @@ class CacheTransformer(Generic[T]):
         ) != hash(g.delay_vertices[0]):
             raise RuntimeError("Cache already has a different delay vertex registered")
         self.cache.vertex_delay = g.delay_vertices[0]
-        g.run_no_output.append(self.cache.vertex_delay)
+        g.run_no_output.append(self.cache.vertex_delay.path)
         return g
 
 

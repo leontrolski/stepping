@@ -149,7 +149,8 @@ def _identity_inputs(
     input_t_map = dict[int, type]()
     for i, target_ports in func_graph.input.items():
         for target, target_i in target_ports:
-            vertex, vertex_i = target_graphs[target].input[target_i]
+            p, vertex_i = target_graphs[target].input[target_i]
+            vertex = target_graphs[target].vertices[p]
             t: type = vertex.t
             if vertex_i == 1:
                 assert isinstance(vertex, VertexBinary)
@@ -195,31 +196,33 @@ def compile_generic(
     # We add an identity to allow re-use of input arguments
     input_identities = _identity_inputs(func_graph, target_graphs, path)
 
-    input: list[Port] = [(vertex, 0) for vertex in input_identities]
+    input: list[Port] = [(vertex.path, 0) for vertex in input_identities]
     vertices: list[Vertex] = input_identities
-    internal = set[tuple[Vertex, Port]]()
-    output = list[Vertex]()
-    run_no_output = list[Vertex]()
+    internal = set[tuple[Path, Port]]()
+    output = list[Path]()
+    run_no_output = list[Path]()
 
     for i, target_ports in func_graph.input.items():
         for target, target_i in target_ports:
-            internal.add((input_identities[i], target_graphs[target].input[target_i]))
+            internal.add(
+                (input_identities[i].path, target_graphs[target].input[target_i])
+            )
     for target in func_graph.output:
-        for vertex in target_graphs[target].output:
-            output.append(vertex)
+        for p in target_graphs[target].output:
+            output.append(p)
     for from_target, [to_target, i] in func_graph.internal:
         for from_vertex in target_graphs[from_target].output:
             internal.add((from_vertex, target_graphs[to_target].input[i]))
-        for vertex in target_graphs[to_target].run_no_output:
-            run_no_output.append(vertex)
+        for p in target_graphs[to_target].run_no_output:
+            run_no_output.append(p)
     for target_graph in target_graphs.values():
-        for vertex in target_graph.vertices:
+        for vertex in target_graph.vertices.values():
             vertices.append(vertex)
         for connection in target_graph.internal:
             internal.add(connection)
 
     return Graph(
-        vertices=vertices,
+        vertices={v.path: v for v in vertices},
         input=input,
         internal=internal,
         output=output,

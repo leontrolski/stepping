@@ -41,6 +41,30 @@ class A4(Generic[T1, T2, T3, T4]): ...
 # fmt: on
 
 
+@dataclass(frozen=True)
+class Path:
+    inner: tuple[str, ...] = ()
+
+    def __truediv__(self, other: str | Path) -> Path:
+        if isinstance(other, Path):
+            return Path(self.inner + other.inner)
+        return Path(self.inner + (other,))
+
+    def __repr__(self) -> str:
+        return f"<Path ...{self.inner[-1]}>"
+
+    def __str__(self) -> str:
+        middle = list(self.inner)
+        if len(middle) % 2 == 0:
+            middle = [
+                middle[i * 2][0] + ":" + middle[i * 2 + 1]
+                for i in range(len(middle) // 2)
+            ]
+        else:
+            middle = [n[0] for n in middle]
+        return "/".join(middle)
+
+
 class OperatorKind(enum.Enum):
     add = "add"
     delay = "delay"
@@ -67,7 +91,7 @@ class OperatorKind(enum.Enum):
     integrate_til_zero = "integrate_til_zero"
 
 
-@dataclass
+@dataclass(frozen=True)
 class VertexUnary(Generic[T, V]):
     t: type[T]
     v: type[V]
@@ -78,10 +102,10 @@ class VertexUnary(Generic[T, V]):
     @property
     def as_graph(self) -> Graph[A1[T], A1[V]]:
         return Graph(
-            vertices=[self],
-            input=[(self, 0)],
+            vertices={self.path: self},
+            input=[(self.path, 0)],
             internal=set(),
-            output=[self],
+            output=[self.path],
             run_no_output=[],
         )
 
@@ -92,7 +116,7 @@ class VertexUnary(Generic[T, V]):
         return _repr_vertex(self)
 
 
-@dataclass
+@dataclass(frozen=True)
 class VertexUnaryDelay(VertexUnary[T, V]):
     indexes: tuple[types.Index[T, Any], ...]
 
@@ -103,7 +127,7 @@ class VertexUnaryDelay(VertexUnary[T, V]):
         return _repr_vertex(self)
 
 
-@dataclass
+@dataclass(frozen=True)
 class VertexUnaryIntegrateTilZero(VertexUnary[T, V]):
     graph: Graph[A1[T], A1[V]]
 
@@ -114,7 +138,7 @@ class VertexUnaryIntegrateTilZero(VertexUnary[T, V]):
         return _repr_vertex(self)
 
 
-@dataclass
+@dataclass(frozen=True)
 class VertexBinary(Generic[T, U, V]):
     t: type[T]
     u: type[U]
@@ -126,10 +150,10 @@ class VertexBinary(Generic[T, U, V]):
     @property
     def as_graph(self) -> Graph[A2[T, U], A1[V]]:
         return Graph(
-            vertices=[self],
-            input=[(self, 0), (self, 1)],
+            vertices={self.path: self},
+            input=[(self.path, 0), (self.path, 1)],
             internal=set(),
-            output=[self],
+            output=[self.path],
             run_no_output=[],
         )
 
@@ -141,21 +165,21 @@ class VertexBinary(Generic[T, U, V]):
 
 
 Vertex = VertexUnary | VertexBinary
-Port = tuple[Vertex, int]
+Port = tuple[Path, int]
 
 
 @dataclass
 class Graph(Generic[T, V]):
-    vertices: list[Vertex]
+    vertices: dict[Path, Vertex]
     input: list[Port]  # in -> a
-    internal: set[tuple[Vertex, Port]]  # a -> b
-    output: list[Vertex]  # b -> out
-    run_no_output: list[Vertex]  # b -> nowhere
+    internal: set[tuple[Path, Port]]  # a -> b
+    output: list[Path]  # b -> out
+    run_no_output: list[Path]  # b -> nowhere
 
     def __post_init__(self) -> None:
         # validate unique vertex identifiers
         vertex_identifiers: dict[tuple[OperatorKind, Path], int] = defaultdict(int)
-        for vertex in self.vertices:
+        for vertex in self.vertices.values():
             vertex_identifiers[(vertex.operator_kind, vertex.path)] += 1
         for identifier, count in vertex_identifiers.items():
             if count != 1:
@@ -163,7 +187,8 @@ class Graph(Generic[T, V]):
                     f"Saw vertices with duplicate identifier: {identifier}"
                 )
         # validate runtime types match
-        for start, [end, i] in self.internal:
+        for start_p, [end_p, i] in self.internal:
+            start, end = self.vertices[start_p], self.vertices[end_p]
             start_type = start.v
             end_type = end.t
             if i == 1:
@@ -171,48 +196,13 @@ class Graph(Generic[T, V]):
                 end_type = end.u
             if start_type != end_type:
                 raise RuntimeError(
-                    f"start.v {start.path}:\n{start_type}\ndoesn't match\n"
-                    f"end.{'u' if i == 1 else 't'} {end.path}:\n{end_type}"
+                    f"start.v {start_p}:\n{start_type}\ndoesn't match\n"
+                    f"end.{'u' if i == 1 else 't'} {end_p}:\n{end_type}"
                 )
 
     @property
     def delay_vertices(self) -> list[VertexUnaryDelay[Any, Any]]:
-        return [v for v in self.vertices if isinstance(v, VertexUnaryDelay)]
-
-    def pformat(self) -> str:
-        input_str = "\n".join(f"  {vertex} [{i}]" for vertex, i in self.input)
-        internal_str = "\n".join(
-            f"  {from_vertex}\n  => {to_vertex} [{i}]"
-            for from_vertex, [to_vertex, i] in self.internal
-        )
-        output_str = "\n".join("  " + repr(n) for n in self.output)
-        return (
-            "<Graph>\n"
-            f"input:\n{input_str}\n"
-            f"internal:\n{internal_str}\n"
-            f"output:\n{output_str}\n"
-        )
-
-
-@dataclass(frozen=True)
-class Path:
-    inner: tuple[str, ...] = ()
-
-    def __truediv__(self, other: str | Path) -> Path:
-        if isinstance(other, Path):
-            return Path(self.inner + other.inner)
-        return Path(self.inner + (other,))
-
-    def __str__(self) -> str:
-        middle = list(self.inner)
-        if len(middle) % 2 == 0:
-            middle = [
-                middle[i * 2][0] + ":" + middle[i * 2 + 1]
-                for i in range(len(middle) // 2)
-            ]
-        else:
-            middle = [n[0] for n in middle]
-        return "/".join(middle)
+        return [v for v in self.vertices.values() if isinstance(v, VertexUnaryDelay)]
 
 
 def _hash_vertex(self: Vertex) -> int:
@@ -222,14 +212,14 @@ def _hash_vertex(self: Vertex) -> int:
 def _repr_vertex(self: Vertex) -> str:
     if isinstance(self, VertexUnary):
         return (
-            f"{self.path} {self.operator_kind}"
+            f"<Vertex {self.operator_kind.name} "
             f"({munge_type_name(self.t)}) -> "
-            f"{munge_type_name(self.v)}"
+            f"{munge_type_name(self.v)}>"
         )
     return (
-        f"{self.path} {self.operator_kind}"
+        f"<Vertex {self.operator_kind.name} "
         f"({munge_type_name(self.t)}, {munge_type_name(self.u)}) -> "
-        f"{munge_type_name(self.v)}"
+        f"{munge_type_name(self.v)}>"
     )
 
 
@@ -304,11 +294,11 @@ def write_png(
             fillcolor="beige",
             style="filled",
         )
-        for vertex in graph.vertices
+        for vertex in graph.vertices.values()
         if (l := _level(vertex, level)) is not None
     }
 
-    for vertex in graph.vertices:
+    for vertex in graph.vertices.values():
         label = str(vertex)
         if simplify_labels:
             label = vertex.operator_kind.value
@@ -326,7 +316,8 @@ def write_png(
     for subgraph in level_1s.values():
         g.add_subgraph(subgraph)
 
-    for i, [vertex, _] in enumerate(graph.input):
+    for i, [p, _] in enumerate(graph.input):
+        vertex = graph.vertices[p]
         g.add_node(pydot.Node(f"input__{i}", fillcolor="red", style="filled"))
         g.add_edge(
             pydot.Edge(
@@ -335,7 +326,8 @@ def write_png(
                 label=munge_type_name(vertex.t),
             )
         )
-    for i, vertex in enumerate(graph.output):
+    for i, p in enumerate(graph.output):
+        vertex = graph.vertices[p]
         g.add_node(pydot.Node(f"output__{i}", fillcolor="red", style="filled"))
         g.add_edge(
             pydot.Edge(
@@ -344,7 +336,9 @@ def write_png(
                 label=munge_type_name(vertex.v),
             )
         )
-    for start, [end, i] in graph.internal:
+    for start_p, [end_p, i] in graph.internal:
+        start = graph.vertices[start_p]
+        end = graph.vertices[end_p]
         g.add_edge(
             pydot.Edge(
                 _dot_identity(start),

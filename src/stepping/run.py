@@ -81,9 +81,12 @@ def iteration(
 
     # sorted by i to ensure insertion order, we assume no gaps
     requires_map: dict[Vertex, list[Vertex]] = defaultdict(list)
-    for start, [end, _] in zip(cache, g.input):
+    for start, [p_end, _] in zip(cache, g.input):
+        end = g.vertices[p_end]
         requires_map[end].append(start)
-    for start, [end, _] in sorted(g.internal, key=lambda vp: vp[1][1]):
+    for p_start, [p_end, _] in sorted(g.internal, key=lambda vp: vp[1][1]):
+        start = g.vertices[p_start]
+        end = g.vertices[p_end]
         requires_map[end].append(start)
 
     def f(vertex: Vertex) -> Any:
@@ -97,8 +100,8 @@ def iteration(
                 a = f(a_vertex)
                 store.set(vertex, a, time)
             if isinstance(vertex, VertexUnaryIntegrateTilZero):
-                [[first_vertex, _]] = vertex.graph.input
-                (a_vertex,) = requires_map[first_vertex]
+                [[first_p, _]] = vertex.graph.input
+                (a_vertex,) = requires_map[vertex.graph.vertices[first_p]]
                 a = f(a_vertex)
                 # Don't flush changes, then flush the changes for all delay vertices
                 no_flush = Time(time.input_time, time.frontier, flush_every_set=None)
@@ -124,9 +127,9 @@ def iteration(
 
     values: tuple[ZSet[Any], ...] = ()
     for p in g.output:
-        values += (f(p),)
+        values += (f(g.vertices[p]),)
     for p in g.run_no_output:
-        f(p)
+        f(g.vertices[p])
 
     store.inc(time)
     return values
