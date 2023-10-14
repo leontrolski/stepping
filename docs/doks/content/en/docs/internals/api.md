@@ -56,16 +56,6 @@ st.identity_print(
 
 [[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+identity_print%28%22&type=code) Prints `a`, then returns it.
 
-<hr>
-
-```python
-st.ensure_python_zset(
-    a: st.ZSet[T],
-) -> st.ZSet[T]
-```
-
-[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+ensure_python_zset%28%22&type=code) Converts `ZSetSQl` -> `ZSetPython`
-
 
 ## Day to day
 
@@ -469,37 +459,68 @@ st.actions(
 
 ## Indexes
 
-```python
-st.pick_index(
-    t: type[T],
-    f: Callable[[T], K],
-    ascending: bool | tuple[bool, ...] = True,
-) -> st.Index[T, K]
-```
-
-[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+pick_index%28%22&type=code) Pick an index of `t`. The index key should be indexable:
-
-<hr>
+Indexes pick a key of type `K` from a value of type `T`. The index key should be _indexable_:
 
 ```python
 IndexableAtom = str | int | float | bool | None | date | datetime | UUID
 Indexable = IndexableAtom | tuple[IndexableAtom, ...]
 ```
 
-Optionally, a boolean for ascending can be passed in, this is equivalent to SQL's `ASC`/`DESC`. If the key is `tuple[IndexableAtom, ...]`, `ascending` must be a tuple of bools of the same length.
+For each of the constructor methods, an optional boolean `ascending` can be passed in, this is equivalent to SQL's `ASC`/`DESC`. If the key is `tuple[IndexableAtom, ...]`, `ascending` must be a tuple of bools of the same length.
 
 <hr>
 
 ```python
-st.pick_identity(
-    t: type[KAtom],
-    ascending: bool,
-) -> st.Index[KAtom, KAtom]
+st.Index.atom(
+    name: str,
+    t: type[T],
+    k: type[KAtom],
+    f: Callable[[T], KAtom],
+    ascending: bool = True,
+) -> Index[T, KAtom]:
 ```
 
-[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+pick_identity%28%22&type=code) Pick an index of the value itself.
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+atom%28%22&type=code) Pick an index of `t` using an `f` that returns an `IndexableAtom`.
 
 <hr>
+
+```python
+st.Index.composite(
+    names: tuple[str, ...],
+    t: type[T],
+    k: type[KTuple],
+    f: Callable[[T], KTuple],
+    ascendings: tuple[bool, ...] | None = None,
+) -> Index[T, KTuple]:
+```
+
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+composite%28%22&type=code) Pick an index of `t` using an `f` that returns a composite value, i.e. a `tuple[IndexableAtom, IndexableAtom, ...]`.
+
+<hr>
+
+```python
+st.Index.identity(
+    t: type[KAtom],
+    ascending: bool = True,
+) -> Index[KAtom, KAtom]:
+```
+
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+identity%28%22&type=code) Use a value that is already an `IndexableAtom` as an index.
+
+<hr>
+
+```python
+st.Index.pick(
+    t: type[T],
+    f: Callable[[T], K],
+    ascending: bool | tuple[bool, ...] = True,
+) -> st.Index[T, K]
+```
+
+[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+pick%28%22&type=code) Pick an index of `t` using a `lambda` function. The lambda function gets immediately called to determine the names and types of the index, so is somewhat restricted.
+
+<hr>
+
 
 ## Database Connections
 
@@ -523,25 +544,6 @@ with st.connection_sqlite(db_url: pathlib.Path) as conn:
 
 ## Helpers
 
-```python
-st.annotate_zset(
-    t: type[T],
-) -> tuple[pydantic.Validator, ...]
-```
-
-[[src]](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+path%3Asrc+%22def+annotate_zset%28%22&type=code) Use when it is required to serialize a `ZSetPython` to a store, example:
-
-<hr>
-
-```python
-class A(st.Data):
-    ...
-    zset: Annotated[ZSetPython[str], *st.annotate_zset(str)]
-```
-
-_At some point, the magic `pydantic` method will be added to make this redundant._
-
-<hr>
 
 ```python
 st.batched(

@@ -17,10 +17,7 @@ toc: true
 
 - In general, it's not battle hardened, I'm still finding many bugs during development.
 - There are some fragile bits of code, particularly `compile(...)`, which does some crazy AST based stuff.
-- Storing all the delay nodes takes up lots of space (I'm not sure how/if e.g. materialize gets round this) -- picking a different serialization method should help a lot -- see [performance]({{< ref "/docs/in-production/performance.md" >}}).
 - The big O performance seems reasonable from my benchmarking, but the fixed overhead per iteration is quite long in some cases, again, see [performance]({{< ref "/docs/in-production/performance.md" >}}).
-- When a query function returns a `ZSetSQL`, the outputs can be inconsistent because it will give the current (as opposed to the previous) value from the delay vertex -- make sure to use `st.ensure_python_zset(...)` on these outputs.
-- It needs a fair bit of work to make parallelizable -- currently only one `st.iteration` can run at a time whilst maintaining consistent data.
 - Ordering of JSON `null`s not tested. There are likely bugs in this area (where we map to/from JSON in the db).
 - There's nothing to help migrate queries between versions. This is a two fold problem (which [steppingmanager]({{< ref "/docs/in-production/stepping-manager.md" >}}) eventually aims to solve):
   - Vertices' paths are fragile as they are a hash of the modules/function names of each sub-query.

@@ -21,17 +21,18 @@ pytest
 mypy src tests
 ```
 
-## Todos
+## Nice-to-haves
 
-- Docs.
-- Work out how to parallelize.
-- Write everything up, email the dbsp people from the original paper. In particular, ask question about why the incremental recursive stuff is different from the paper.
-- See suggestions in `performance.md`.
+- In `interleave_changes`, use indexed `ZSetPython` under the hood.
+- Skip out the middle man with `Grouped` and just use an indexed `ZSet`? Does this lead to performance benefits in `st.group`?
+- Instead of `create_tables=True` can we emit SQL and write it.
+- Revisit `st.compile(...)`.
+- Can `run.iteration` make nicer error messages?
+- Python 3.12. Use built in `batched`. Can we use the new `Unpack` syntax for nicer action types?
 - Look at 11.8 "Window aggregates"
 - Replace `integrate_delay` with a nice transform. Similarly, transform shared delays.
-- Test arbitrary depth grouped nesting and joining in a grouped setting (Does this _need_ doing?).
-- Replace `annotate_zset` with `__get_pydantic_core_schema__`.
-- Revisit `st.compile(...)`
+- Decide whether to make `...SQL` classes protocols.
+- Test arbitrary depth grouped nesting and joining in a grouped setting (Does this even make sense to do?).
 
 # Uploading to Pypi
 

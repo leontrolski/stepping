@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from functools import cache
 from itertools import islice
 from types import NoneType
 from typing import (
     Any,
     Callable,
     Generic,
+    Iterable,
     Iterator,
     Protocol,
     Self,
@@ -20,18 +22,10 @@ from typing import (
 )
 from uuid import UUID
 
-import pydantic
+from stepping import graph, steppingpack
 
-from stepping import graph, serialize
 
 # fmt: off
-
-@runtime_checkable
-class SerializableObject(Protocol):
-    def serialize(self) -> Serialized: ...
-    @classmethod
-    def make_deserialize(cls: type[T]) -> Callable[[Serialized], T]: ...
-
 class MatchAll:
     def __repr__(self) -> str: return "<MATCH_ALL>"
 MATCH_ALL = MatchAll()
@@ -39,10 +33,8 @@ class Empty:
     def __repr__(self) -> str: return "<EMPTY>"
 EMPTY = Empty()
 IndexableAtom = str | int | float | bool | None | date | datetime | UUID
-IndexableAtomTypes = str, int, float, bool, NoneType, date, datetime, UUID
 Indexable = IndexableAtom | tuple[IndexableAtom, ...]
-Serializable = IndexableAtom | SerializableObject | tuple['Serializable', ...] | list['Serializable']
-Serialized   = str | int | float | bool | None | dict[str, 'Serialized'] | list['Serialized']
+Serializable = steppingpack.Value
 
 class Addable(Protocol):
     def __add__(self: T, other: T) -> T: ...
@@ -66,9 +58,9 @@ K = TypeVar("K", bound=Indexable)
 T_co = TypeVar("T_co", covariant=True)
 K_co = TypeVar("K_co", bound=Indexable, covariant=True)
 KAtom = TypeVar("KAtom", bound=IndexableAtom)
+KTuple = TypeVar("KTuple", bound=tuple[IndexableAtom])
 TIndexable = TypeVar("TIndexable", bound=Indexable)
 TSerializable = TypeVar("TSerializable", bound=Serializable)
-TSerializable_co = TypeVar("TSerializable_co", bound=Serializable)
 VSerializable = TypeVar("VSerializable", bound=Serializable)
 TAddable = TypeVar("TAddable", bound=Addable)
 UAddable  = TypeVar("UAddable", bound=Addable)
@@ -91,11 +83,10 @@ class ZSet(Protocol[T]):
     iter_by_index: _IterByIndex[T]
 
 class Store(Protocol):
-    @property
-    def _current(self) -> dict[graph.VertexUnaryDelay[Any, Any], ZSet[Any]]: ...
-    def get(self, vertex: graph.VertexUnaryDelay[Any, Any]) -> ZSet[Any]: ...
-    def set(self, vertex: graph.VertexUnaryDelay[Any, Any], value: Any) -> None: ...
-    def inc(self, flush: bool) -> None: ...
+    def get(self, vertex: graph.VertexUnaryDelay[Any, Any], time: Time | None) -> ZSet[Any]: ...
+    def set(self, vertex: graph.VertexUnaryDelay[Any, Any], value: Any, time: Time) -> None: ...
+    def inc(self, time: Time) -> None: ...
+    def flush(self, vertices: Iterable[graph.VertexUnaryDelay[Any, Any]], time: Time) -> None: ...
 
 @runtime_checkable
 class Transformer(Protocol):
@@ -108,69 +99,10 @@ class TransformerBuilder(Protocol):
 # fmt: on
 
 
-@dataclass(frozen=True, eq=False)
-class Index(Generic[T_co, K_co]):
-    fields: str | tuple[str, ...]
-    ascending: bool | tuple[bool, ...]
-    f: Callable[[T_co], K_co]
-    t: type[T_co]
-    k: type[K_co]
-
-    def __eq__(self, other: Any) -> bool:
-        if not isinstance(other, Index):
-            return False
-        return (
-            self.fields,
-            self.ascending,
-            self.t,
-            self.k,
-        ) == (
-            other.fields,
-            other.ascending,
-            other.t,
-            other.k,
-        )
-
-
-class Data(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(frozen=True)
-
-    def serialize(self) -> dict[str, Serialized]:
-        return self.model_dump(mode="json")
-
-    @classmethod
-    def make_deserialize(cls: type[T]) -> Callable[[Serialized], T]:
-        def inner(data: Serialized) -> T:
-            assert isinstance(data, dict)
-            return cls(**data)
-
-        return inner
-
-
 @dataclass(frozen=True)
 class Pair(Generic[T, U]):
     left: T
     right: U
-
-    def serialize(self) -> dict[str, Serialized]:
-        return dict(
-            left=serialize.serialize(self.left),  # type:ignore[arg-type]
-            right=serialize.serialize(self.right),  # type:ignore[arg-type]
-        )
-
-    @classmethod
-    def make_deserialize(cls: type[Pair[T, U]]) -> Callable[[Serialized], Pair[T, U]]:
-        left_type, right_type = get_args(cls)
-
-        def inner(n: Serialized) -> Pair[T, U]:
-            assert isinstance(n, dict)
-            out: TSerializable = Pair(  # type: ignore
-                left=serialize.deserialize(left_type, n["left"]),
-                right=serialize.deserialize(right_type, n["right"]),
-            )
-            return out
-
-        return inner
 
 
 @dataclass
@@ -193,46 +125,146 @@ class Grouped(Generic[T, K]):
         return set(self._data.keys())
 
 
+@dataclass(frozen=True)
+class Time:
+    input_time: int = -1  # this set of inputs' time
+    frontier: int = -1  # only read changes when written up to this time
+    # Where
+    # - True is flush every time we call `Store.set(...)`
+    # - False is flush every time we call `Store.inc(...)`
+    # - None is never flush
+    flush_every_set: bool | None = False
+
+
+@dataclass(frozen=True, eq=False)
+class Index(Generic[T_co, K_co]):
+    names: tuple[str, ...]
+    ascending: tuple[bool, ...]
+    f: Callable[[T_co], K_co]
+    t: type[T_co]
+    k: type[K_co]
+    is_composite: bool
+
+    @classmethod
+    def atom(
+        cls,
+        name: str,
+        t: type[T],
+        k: type[KAtom],
+        f: Callable[[T], KAtom],
+        ascending: bool = True,
+    ) -> Index[T, KAtom]:
+        return Index(
+            names=(name,),
+            ascending=(ascending,),
+            f=f,
+            t=t,
+            k=k,
+            is_composite=False,
+        )
+
+    @classmethod
+    def composite(
+        cls,
+        names: tuple[str, ...],
+        t: type[T],
+        k: type[KTuple],
+        f: Callable[[T], KTuple],
+        ascendings: tuple[bool, ...] | None = None,
+    ) -> Index[T, KTuple]:
+        assert len(names) == len(get_args(t))
+        if ascendings is None:
+            ascendings = (True,) * len(names)
+        assert len(names) == len(ascendings)
+        return Index(
+            names=names,
+            ascending=ascendings,
+            f=f,
+            t=t,
+            k=k,
+            is_composite=True,
+        )
+
+    @classmethod
+    def identity(cls, t: type[KAtom], ascending: bool = True) -> Index[KAtom, KAtom]:
+        return Index[KAtom, KAtom](
+            names=("identity",),
+            ascending=(ascending,),
+            f=lambda t: t,
+            t=t,
+            k=t,
+            is_composite=False,
+        )
+
+    @classmethod
+    def pick(
+        cls,
+        t: type[T],
+        f: Callable[[T], K],
+        ascending: bool | tuple[bool, ...] = True,
+    ) -> Index[T, K]:
+        proxy = f(Proxy(t))  # type: ignore[arg-type]
+        # If the we have like f=lambda a: (a, b, c)
+        if isinstance(proxy, tuple):
+            k = tuple[*(p.t for p in proxy)]  # type: ignore
+            names = tuple(p.fields for p in proxy)
+            is_composite = True
+        # If the we have like f=lambda a: a.b, where a.b is a tuple
+        elif is_type(proxy.t, tuple):  # type: ignore
+            k = proxy.t  # type: ignore
+            names = tuple(f"{proxy.fields}.{i}" for i, _ in enumerate(get_args(k)))  # type: ignore
+            is_composite = True
+        # If the we have like f=lambda a: a.b, where a.b is not a tuple
+        else:
+            k = proxy.t  # type: ignore
+            names = (proxy.fields,)  # type: ignore
+            is_composite = False
+
+        if ascending is True or ascending is False:
+            ascending = (ascending,) * (len(get_args(k)) if is_type(k, tuple) else 1)
+        assert len(ascending) == len(names)
+
+        return Index(
+            names=names,
+            ascending=ascending,
+            f=f,
+            t=t,
+            k=k,
+            is_composite=is_composite,
+        )
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, Index):
+            return False
+        return (
+            self.names,
+            self.ascending,
+            self.t,
+            self.k,
+        ) == (
+            other.names,
+            other.ascending,
+            other.t,
+            other.k,
+        )
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.names,
+                self.ascending,
+                self.t,
+                self.k,
+            )
+        )
+
+
 @dataclass
 class Signature:
     args: list[tuple[str, type]]
     kwargs: dict[str, type]
     ret: type
     transformer: Transformer | None = None
-
-
-def pick_identity(t: type[KAtom], ascending: bool = True) -> Index[KAtom, KAtom]:
-    return Index[KAtom, KAtom](
-        "",
-        ascending,
-        lambda t: t,
-        t,
-        t,
-    )
-
-
-def pick_index(
-    t: type[T], f: Callable[[T], K], ascending: bool | tuple[bool, ...] = True
-) -> Index[T, K]:
-    proxy = f(Proxy(t))  # type: ignore[arg-type]
-    if isinstance(proxy, tuple):
-        k = tuple[*(p.t for p in proxy)]  # type: ignore
-        fields = tuple(p.fields for p in proxy)
-    else:
-        k = proxy.t  # type: ignore
-        fields = proxy.fields  # type: ignore
-
-    if ascending is True:
-        ascending = (True,) * len(get_args(k)) if is_type(k, tuple) else True
-    if ascending is False:
-        ascending = (False,) * len(get_args(k)) if is_type(k, tuple) else False
-    return Index(
-        fields,
-        ascending,
-        f,
-        t,
-        k,
-    )
 
 
 def is_type(t: type, check: type) -> bool:

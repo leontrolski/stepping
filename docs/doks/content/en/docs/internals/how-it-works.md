@@ -204,24 +204,22 @@ st.Graph[
 
 _`Aθ` is just a collection of arguments with length θ -- waiting on mypy support for `TypeVarTuple` over here._
 
-The internal structure of the graph from above is:
+If we print `query_delay`, we'll see something like:
 
 ```python
 Graph(
-    vertices=[
-        t:input_0 OperatorKind.identity(ZSet[str]) -> ZSet[str],
-        t:delayed OperatorKind.delay(ZSet[str]) -> ZSet[str]],
+    vertices={
+        <Path ...input_0>: <Vertex identity (ZSet[str]) -> ZSet[str]>,
+        <Path ...delayed>: <Vertex delay (ZSet[str]) -> ZSet[str]>
+    },
     input=[
-        (t:input_0 OperatorKind.identity(ZSet[str]) -> ZSet[str], 0)
+        (<Path ...input_0>, 0)
     ],
     internal={
-        (
-            t:input_0 OperatorKind.identity(ZSet[str]) -> ZSet[str],
-            (t:delayed OperatorKind.delay(ZSet[str]) -> ZSet[str], 0)
-        )
+        (<Path ...input_0>, (<Path ...delayed>, 0)),
     },
     output=[
-        t:delayed OperatorKind.delay(ZSet[str]) -> ZSet[str]
+        <Path ...delayed>
     ],
     run_no_output=[]
 )
@@ -229,9 +227,9 @@ Graph(
 
 The graph has a:
 
-- List of all the vertices within it.
-- List of all the inputs. These are a tuple of a `Vertex` and `0` for the first argument, `1` for the second argument (in the case of binary vertices).
-- Set of all the internal edges. These are each a tuple of a `Vertex`, pointing to a (vertex, `0|1`) tuple.
+- Map of `Path` to `Vertex`. This where all the vertices in the graph are, from here on they are referenced by their `Path`. _Note that each path has a `.inner` that describes exactly where it's from._
+- List of all the inputs. These are a tuple of a `Path` and `0` for the first argument, `1` for the second argument (in the case of binary vertices).
+- Set of all the internal edges. These are each a tuple of a `Path`, pointing to a (`Path`, `0|1`) tuple.
 - List of output vertices.
 - List of vertices that we want to run, but we don't use in the output.
 
@@ -258,8 +256,8 @@ def query_graph(a: st.ZSet[A], b: st.ZSet[B]) -> st.ZSet[st.Pair[A, B]]:
     joined = linear.join(
         a_uppered,
         b,
-        on_left=st.pick_index(A, lambda a: a.name),
-        on_right=st.pick_index(B, lambda b: b.name),
+        on_left=st.Index.pick(A, lambda a: a.name),
+        on_right=st.Index.pick(B, lambda b: b.name),
     )
     integrated = st.integrate(joined)
     return integrated
@@ -356,8 +354,8 @@ def query_dumb(a: st.ZSet[A], b: st.ZSet[B]) -> st.ZSet[st.Pair[A, B]]:
     joined = linear.join(
         a,
         b,
-        on_left=st.pick_index(A, lambda a: a.name),
-        on_right=st.pick_index(B, lambda b: b.name),
+        on_left=st.Index.pick(A, lambda a: a.name),
+        on_right=st.Index.pick(B, lambda b: b.name),
     )
     return joined
 ```
@@ -371,8 +369,8 @@ def query_dumb(a: st.ZSet[A], b: st.ZSet[B]) -> st.ZSet[st.Pair[A, B]]:
     joined = linear.join(
         a_integrated,
         b_integrated,
-        on_left=st.pick_index(A, lambda a: a.name),
-        on_right=st.pick_index(B, lambda b: b.name),
+        on_left=st.Index.pick(A, lambda a: a.name),
+        on_right=st.Index.pick(B, lambda b: b.name),
     )
     differentiated = st.differentiate(joined)
     return differentiated
@@ -385,32 +383,33 @@ Let's demonstrate that this does what we expect: _Remember, the first item of th
     st.ZSetPython({A(x=1, name="Bob"): 1, A(x=2, name="Jeff"): 1}),
     st.ZSetPython({B(y=3, name="Bob"): 1}),
 ))
-╭───────────┬────────────────┬────────────────╮
-│   _count_ │ left           │ right          │
-├───────────┼────────────────┼────────────────┤
-│         1 │ x=1 name='Bob' │ y=3 name='Bob' │
-╰───────────┴────────────────┴────────────────╯
+╒═══════════╤════════════════════╤════════════════════╕
+│   _count_ │ left               │ right              │
+╞═══════════╪════════════════════╪════════════════════╡
+│         1 │ A(x=1, name='Bob') │ B(y=3, name='Bob') │
+╘═══════════╧════════════════════╧════════════════════╛
 
 >>> st.iteration(store, graph, (
     st.ZSetPython(),
     st.ZSetPython({B(y=4, name="Bob"): 2}),
 ))
-╭───────────┬────────────────┬────────────────╮
-│   _count_ │ left           │ right          │
-├───────────┼────────────────┼────────────────┤
-│         2 │ x=1 name='Bob' │ y=4 name='Bob' │
-╰───────────┴────────────────┴────────────────╯
+╒═══════════╤════════════════════╤════════════════════╕
+│   _count_ │ left               │ right              │
+╞═══════════╪════════════════════╪════════════════════╡
+│         2 │ A(x=1, name='Bob') │ B(y=4, name='Bob') │
+╘═══════════╧════════════════════╧════════════════════╛
 
 >>> st.iteration(store, graph, (
     st.ZSetPython({A(x=1, name="Bob"): -1}),
     st.ZSetPython(),
 ))
-╭───────────┬────────────────┬────────────────╮
-│   _count_ │ left           │ right          │
-├───────────┼────────────────┼────────────────┤
-│        -1 │ x=1 name='Bob' │ y=3 name='Bob' │
-│        -2 │ x=1 name='Bob' │ y=4 name='Bob' │
-╰───────────┴────────────────┴────────────────╯
+╒═══════════╤════════════════════╤════════════════════╕
+│   _count_ │ left               │ right              │
+╞═══════════╪════════════════════╪════════════════════╡
+│        -1 │ A(x=1, name='Bob') │ B(y=3, name='Bob') │
+├───────────┼────────────────────┼────────────────────┤
+│        -2 │ A(x=1, name='Bob') │ B(y=4, name='Bob') │
+╘═══════════╧════════════════════╧════════════════════╛
 ```
 
 As we add rows, we get returned the changes that need making to the output of the join query -- including the removal of all the rows when we removed the left hand Bob.
@@ -583,7 +582,7 @@ def sum_by_length(a: st.ZSet[str]) -> st.ZSet[st.Pair[st.ZSetPython[str], int]]:
     with_len = st.map(a, f=_len)
     grouped = st.group_reduce_flatten(
         with_len,
-        by=st.pick_index(WithLen, lambda w: w.length),
+        by=st.Index.pick(WithLen, lambda w: w.length),
         zero=_zero_zset,
         pick_value=_pick_zset,
     )

@@ -123,7 +123,7 @@ def _str_y(a: "TAddable") -> TAddable:
 
 def use_delay_indexed_pair(a: ZSet[Pair[T, K]]) -> ZSet[Pair[T, K]]:
     with st.at_compile_time:
-        index: Index[Pair[T, K], K] = st.pick_index(
+        index: Index[Pair[T, K], K] = st.Index.pick(
             get_annotation_zset(st.compile_typeof(a)),
             lambda p: p.right,
         )
@@ -218,7 +218,7 @@ def test_internal() -> None:
             ast.Target("index"): (
                 ast.TypeCode("Index[Pair[T, K], K]"),
                 ast.Code(
-                    "st.pick_index("
+                    "st.Index.pick("
                     "get_annotation_zset(st.compile_typeof(a)), "
                     "lambda p: p.right)"
                 ),
@@ -267,7 +267,7 @@ def test_replace_compile_typeof() -> None:
     ast._GLOBAL_KWARG_TYPES = []
 
     code = ast.Code(
-        "st.pick_index("
+        "st.Index.pick("
         "get_annotation_zset(st.compile_typeof(a)), "
         "lambda p: p.right)"
     )
@@ -275,7 +275,7 @@ def test_replace_compile_typeof() -> None:
     ast._GLOBAL_KWARG_TYPES = prev
 
     expected = ast.Code(
-        "st.pick_index("
+        "st.Index.pick("
         "get_annotation_zset(\n_GLOBAL_KWARG_TYPES[0]), "
         "lambda p: p.right)"
     )
@@ -585,4 +585,4 @@ def test_compile_double() -> None:
         ret=ZSet[Pair[str, int]],
     )
     actual = builder.compile_generic(use_delay_indexed_pair, {}, signature, Path())
-    assert actual.output[0].v == ZSet[Pair[str, int]]
+    assert actual.vertices[actual.output[0]].v == ZSet[Pair[str, int]]

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
-from typing import Any, get_args
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Any, Iterable, get_args
 
 from stepping.graph import Graph, VertexUnaryDelay
-from stepping.types import Store, ZSet, is_type
+from stepping.types import Store, Time, ZSet, is_type
 from stepping.zset.python import ZSetPython
 from stepping.zset.sql import generic, postgres, sqlite
 
@@ -13,31 +14,36 @@ from stepping.zset.sql import generic, postgres, sqlite
 @dataclass
 class StorePython:
     _current: dict[VertexUnaryDelay[Any, Any], ZSet[Any]]
-    _changes: list[tuple[VertexUnaryDelay[Any, Any], Any]]
+    _changes: dict[VertexUnaryDelay[Any, Any], ZSet[Any]]
 
     @classmethod
     def from_graph(cls, graph: Graph[Any, Any]) -> StorePython:
-        store = StorePython({}, [])
-        for vertex in graph.vertices:
-            if not isinstance(vertex, VertexUnaryDelay):
-                continue
+        store = StorePython({}, {})
+        for vertex in graph.delay_vertices:
             z = ZSetPython[Any](indexes=vertex.indexes)
             store._current[vertex] = z
         return store
 
-    def get(self, vertex: VertexUnaryDelay[Any, Any]) -> Any:
+    def get(self, vertex: VertexUnaryDelay[Any, Any], time: Time | None) -> Any:
+        if isinstance(time, Time) and time.flush_every_set is True:
+            raise NotImplementedError("Internally consistency not implemented")
         if vertex not in self._current:
             raise RuntimeError(f"There is nowhere to put data for key: {vertex}")
         return self._current[vertex]
 
-    def set(self, vertex: VertexUnaryDelay[Any, Any], value: Any) -> None:
+    def set(self, vertex: VertexUnaryDelay[Any, Any], value: Any, time: Time) -> None:
+        if time.flush_every_set is True:
+            raise NotImplementedError("Internally consistency not implemented")
         assert isinstance(value, (ZSetPython, generic.ZSetSQL))
-        self._changes.append((vertex, value))
+        self._changes[vertex] = value
 
-    def inc(self, flush: bool) -> None:
-        for vertex, value in self._changes:
+    def inc(self, time: Time) -> None:
+        for vertex, value in self._changes.items():
             self._current[vertex] = value
-        self._changes = []
+        self._changes = {}
+
+    def flush(self, vertices: Iterable[VertexUnaryDelay[Any, Any]], time: Time) -> None:
+        raise NotImplementedError("Internally consistency not implemented")
 
 
 def _make_cursor(conn: generic.Conn) -> generic.Cur:
@@ -48,9 +54,13 @@ def _make_cursor(conn: generic.Conn) -> generic.Cur:
 @dataclass
 class StoreSQL:
     _zset_cls: type[generic.ZSetSQL[Any]]
-    _current: dict[VertexUnaryDelay[Any, Any], ZSet[Any]]
-    _changes: list[tuple[VertexUnaryDelay[Any, Any], ZSet[Any]]]
-    _conns: dict[generic.Conn, generic.Cur] = field(default_factory=dict)
+    _current: dict[VertexUnaryDelay[Any, Any], generic.ZSetSQL[Any]]
+    _changes: dict[VertexUnaryDelay[Any, Any], generic.ZSetSQL[Any]]
+    _conn: generic.Conn
+    _peers_by_table: dict[str, list[generic.ZSetSQL[Any]]]
+
+    def register(self, value: generic.ZSetSQL[Any]) -> None:
+        self._peers_by_table[value.table_name].append(value)
 
     # Called by subclasses
     @staticmethod
@@ -60,36 +70,36 @@ class StoreSQL:
         graph: Graph[Any, Any],
         create_tables: bool = True,
     ) -> StoreSQL:
-        store = StoreSQL(zset_cls, {}, [])
-        if conn not in store._conns:
-            store._conns[conn] = _make_cursor(conn)
-        cur = store._conns[conn]
-
-        for vertex in graph.vertices:
-            if not isinstance(vertex, VertexUnaryDelay):
-                continue
-            table = generic.Table(table_name(vertex))
+        store = StoreSQL(zset_cls, {}, {}, conn, defaultdict(list))
+        cur = _make_cursor(conn)
+        for vertex in graph.delay_vertices:
             assert is_type(vertex.t, ZSet)
             (t,) = get_args(vertex.t)
             z = zset_cls(
                 cur,  # type: ignore[arg-type]
                 t,
-                table,
+                table_name(vertex),
                 vertex.indexes,
+                register=store.register,
             )
             if create_tables:
                 z.create_data_table()
             store._current[vertex] = z
-
+        conn.commit()
         return store
 
-    def get(self, vertex: VertexUnaryDelay[Any, Any]) -> generic.ZSetSQL[Any]:
+    def get(
+        self, vertex: VertexUnaryDelay[Any, Any], time: Time | None
+    ) -> generic.ZSetSQL[Any]:
         if vertex not in self._current:
             raise RuntimeError(f"There is nowhere to put data for key: {vertex}")
-        return self._current[vertex]  # type: ignore[return-value]
+        value = self._current[vertex]
+        if time is not None and time.frontier != -1:
+            value.wait_til_time(time.frontier)
+        return value
 
-    def set(self, vertex: VertexUnaryDelay[Any, Any], value: Any) -> None:
-        original = self.get(vertex)
+    def set(self, vertex: VertexUnaryDelay[Any, Any], value: Any, time: Time) -> None:
+        original = self._current[vertex]
 
         # If the incoming value is ZSetPython, clear the table and write it fresh,
         # this happens a lot when storing the output of `make_set`.
@@ -98,25 +108,27 @@ class StoreSQL:
         if not isinstance(value, generic.ZSetSQL):
             raise NotImplementedError(f"Not sure how to store value: {type(value)}")
 
-        self._changes.append((vertex, value))
+        self._changes[vertex] = value
+        if time.flush_every_set is True:
+            self.flush([vertex], time)
 
-    def inc(self, flush: bool) -> None:
-        for vertex, value in self._changes:
-            self._current[vertex] = value
-        self._changes = []
+    def inc(self, time: Time) -> None:
+        if time.flush_every_set is False:
+            self.flush(self._current, time)
+        self._current |= self._changes
 
-        if flush:
-            for value in self._current.values():
-                assert isinstance(value, generic.ZSetSQL)
-                value.flush_changes()
+    def flush(self, vertices: Iterable[VertexUnaryDelay[Any, Any]], time: Time) -> None:
+        for vertex in vertices:
+            value = self._changes[vertex]
+            value.upsert()
+            changes = value.changes
+            if time.input_time != -1:
+                value.set_last_update_time(time.input_time)
+            for peer in self._peers_by_table[value.table_name]:
+                peer.changes = _remove_changes(peer.changes, changes)
+            self._peers_by_table[value.table_name] = [value]
 
-            for conn in list(self._conns):
-                conn.commit()
-                self._conns[conn] = _make_cursor(conn)
-
-            for value in self._current.values():
-                assert isinstance(value, generic.ZSetSQL)
-                value.cur = self._conns[value.cur.connection]
+        self._conn.commit()
 
 
 class StorePostgres(StoreSQL):
@@ -173,7 +185,24 @@ def table_name(vertex: VertexUnaryDelay[Any, Any]) -> str:
     return "_".join(middle) + "_" + _hash(str(vertex), 6)
 
 
+def _remove_changes(
+    existing: tuple[ZSetPython[Any], ...], remove: tuple[ZSetPython[Any], ...]
+) -> tuple[ZSetPython[Any], ...]:
+    out = tuple[ZSetPython[Any], ...]()
+
+    for e in existing:
+        for r in remove:
+            if e is r:
+                remove = tuple(n for n in remove if n is not r)
+                break
+        else:
+            out += (e,)
+
+    return out + tuple(-n for n in remove)
+
+
 def pp_store(store: Store) -> None:
+    assert isinstance(store, (StorePython, StoreSQL))
     for vertex, z in sorted(store._current.items(), key=lambda vz: str(vz[0])):
         print(vertex)
         print("-----------------------------")

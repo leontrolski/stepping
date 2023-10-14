@@ -6,7 +6,6 @@ from typing import Final, Generic, Iterator
 
 from stepping.types import K, MatchAll, TSerializable
 
-Ascending = bool | tuple[bool, ...]
 MAX_KEYS: Final = 15
 J: Final = MAX_KEYS // 2  # the index of the middle element
 
@@ -33,7 +32,7 @@ def _lt_atom(key_a: K, key_b: K) -> bool:
     return key_a < key_b  # type: ignore
 
 
-def lt(key_a: K, key_b: K, ascending: Ascending) -> bool:
+def lt(key_a: K, key_b: K, ascending: tuple[bool, ...]) -> bool:
     if key_a == key_b:
         return False
 
@@ -47,11 +46,11 @@ def lt(key_a: K, key_b: K, ascending: Ascending) -> bool:
             return _lt_atom(inner_a, inner_b) ^ (not inner_ascending)
         return False
 
-    assert not isinstance(ascending, tuple)
-    return _lt_atom(key_a, key_b) ^ (not ascending)
+    (asc,) = ascending
+    return _lt_atom(key_a, key_b) ^ (not asc)
 
 
-def _gt(key_a: K, key_b: K, ascending: Ascending) -> bool:
+def _gt(key_a: K, key_b: K, ascending: tuple[bool, ...]) -> bool:
     return key_a != key_b and not lt(key_a, key_b, ascending)
 
 
@@ -72,14 +71,17 @@ def _split(node: Node[TSerializable, K], i: int) -> Node[TSerializable, K]:
 
 
 def add(
-    node: Node[TSerializable, K], value: TSerializable, key: K, ascending: Ascending
+    node: Node[TSerializable, K],
+    value: TSerializable,
+    key: K,
+    ascending: tuple[bool, ...],
 ) -> Node[TSerializable, K]:
     if len(node.keys) == MAX_KEYS:
         node = _split(Node((), (node,)), 0)
     return _insert(node, value, key, ascending)
 
 
-def _find_i(node: Node[TSerializable, K], key: K, ascending: Ascending) -> int:
+def _find_i(node: Node[TSerializable, K], key: K, ascending: tuple[bool, ...]) -> int:
     i = len(node.keys)
     for inner_i, [_, inner_key] in enumerate(node.keys):
         if lt(key, inner_key, ascending):
@@ -89,7 +91,10 @@ def _find_i(node: Node[TSerializable, K], key: K, ascending: Ascending) -> int:
 
 
 def _insert(
-    node: Node[TSerializable, K], value: TSerializable, key: K, ascending: Ascending
+    node: Node[TSerializable, K],
+    value: TSerializable,
+    key: K,
+    ascending: tuple[bool, ...],
 ) -> Node[TSerializable, K]:
     i = _find_i(node, key, ascending)
 
@@ -106,7 +111,7 @@ def _insert(
 
 
 def yield_sorted_matching(
-    node: Node[TSerializable, K], match_key: K | MatchAll, ascending: Ascending
+    node: Node[TSerializable, K], match_key: K | MatchAll, ascending: tuple[bool, ...]
 ) -> Iterator[TSerializable]:
     ma = isinstance(match_key, MatchAll)
     if not node.keys:

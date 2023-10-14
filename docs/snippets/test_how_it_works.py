@@ -50,8 +50,8 @@ def query_graph(a: st.ZSet[A], b: st.ZSet[B]) -> st.ZSet[st.Pair[A, B]]:
     joined = linear.join(
         a_uppered,
         b,
-        on_left=st.pick_index(A, lambda a: a.name),
-        on_right=st.pick_index(B, lambda b: b.name),
+        on_left=st.Index.pick(A, lambda a: a.name),
+        on_right=st.Index.pick(B, lambda b: b.name),
     )
     integrated = st.integrate(joined)
     return integrated
@@ -106,8 +106,8 @@ def query_dumb(a: st.ZSet[A], b: st.ZSet[B]) -> st.ZSet[st.Pair[A, B]]:
     joined = linear.join(
         a_integrated,
         b_integrated,
-        on_left=st.pick_index(A, lambda a: a.name),
-        on_right=st.pick_index(B, lambda b: b.name),
+        on_left=st.Index.pick(A, lambda a: a.name),
+        on_right=st.Index.pick(B, lambda b: b.name),
     )
     differentiated = st.differentiate(joined)
     return differentiated
@@ -128,11 +128,11 @@ def test_f() -> None:
     expected_str = dedent(
         """
         <ZSetPython>
-        ╒═══════════╤════════════════╤════════════════╕
-        │   _count_ │ left           │ right          │
-        ╞═══════════╪════════════════╪════════════════╡
-        │         1 │ x=1 name='Bob' │ y=3 name='Bob' │
-        ╘═══════════╧════════════════╧════════════════╛
+        ╒═══════════╤════════════════════╤════════════════════╕
+        │   _count_ │ left               │ right              │
+        ╞═══════════╪════════════════════╪════════════════════╡
+        │         1 │ A(x=1, name='Bob') │ B(y=3, name='Bob') │
+        ╘═══════════╧════════════════════╧════════════════════╛
         """
     ).strip()
     assert set(str(output).splitlines()) == set(str(expected_str).splitlines())
@@ -148,11 +148,11 @@ def test_f() -> None:
     expected_str = dedent(
         """
         <ZSetPython>
-        ╒═══════════╤════════════════╤════════════════╕
-        │   _count_ │ left           │ right          │
-        ╞═══════════╪════════════════╪════════════════╡
-        │         2 │ x=1 name='Bob' │ y=4 name='Bob' │
-        ╘═══════════╧════════════════╧════════════════╛
+        ╒═══════════╤════════════════════╤════════════════════╕
+        │   _count_ │ left               │ right              │
+        ╞═══════════╪════════════════════╪════════════════════╡
+        │         2 │ A(x=1, name='Bob') │ B(y=4, name='Bob') │
+        ╘═══════════╧════════════════════╧════════════════════╛
         """
     ).strip()
     assert set(str(output).splitlines()) == set(str(expected_str).splitlines())
@@ -168,13 +168,13 @@ def test_f() -> None:
     expected_str = dedent(
         """
         <ZSetPython>
-        ╒═══════════╤════════════════╤════════════════╕
-        │   _count_ │ left           │ right          │
-        ╞═══════════╪════════════════╪════════════════╡
-        │        -2 │ x=1 name='Bob' │ y=4 name='Bob' │
-        ├───────────┼────────────────┼────────────────┤
-        │        -1 │ x=1 name='Bob' │ y=3 name='Bob' │
-        ╘═══════════╧════════════════╧════════════════╛
+        ╒═══════════╤════════════════════╤════════════════════╕
+        │   _count_ │ left               │ right              │
+        ╞═══════════╪════════════════════╪════════════════════╡
+        │        -1 │ A(x=1, name='Bob') │ B(y=3, name='Bob') │
+        ├───────────┼────────────────────┼────────────────────┤
+        │        -2 │ A(x=1, name='Bob') │ B(y=4, name='Bob') │
+        ╘═══════════╧════════════════════╧════════════════════╛
         """
     ).strip()
     assert set(str(output).splitlines()) == set(str(expected_str).splitlines())
@@ -186,28 +186,18 @@ def test_f() -> None:
     # assert output == st.ZSetPython({"a": 4})
 
 
-class WithLen(st.Data):
-    value: str
-    length: int
-
-
-def _len(s: str) -> WithLen:
-    return WithLen(value=s, length=len(s))
-
-
 def _zero_zset() -> st.ZSetPython[str]:
     return st.ZSetPython()
 
 
-def _pick_zset(w: WithLen) -> st.ZSetPython[str]:
-    return st.ZSetPython({w.value: 1})
+def _pick_zset(n: str) -> st.ZSetPython[str]:
+    return st.ZSetPython({n: 1})
 
 
 def sum_by_length(a: st.ZSet[str]) -> st.ZSet[st.Pair[st.ZSetPython[str], int]]:
-    with_len = st.map(a, f=_len)
     grouped = st.group_reduce_flatten(
-        with_len,
-        by=st.pick_index(WithLen, lambda w: w.length),
+        a,
+        by=st.Index.atom("length", str, int, lambda n: len(n)),
         zero=_zero_zset,
         pick_value=_pick_zset,
     )

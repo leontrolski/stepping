@@ -59,12 +59,12 @@ def query(
     joined = st.join(
         products,
         line_items,
-        on_left=st.pick_index(Product, lambda p: p.name),
-        on_right=st.pick_index(LineItem, lambda l: l.product_name),
+        on_left=st.Index.pick(Product, lambda p: p.name),
+        on_right=st.Index.pick(LineItem, lambda l: l.product_name),
     )
     grouped = st.group_reduce_flatten(
         joined,
-        by=st.pick_index(st.Pair[Product, LineItem], lambda p: p.right.basket_id),
+        by=st.Index.pick(st.Pair[Product, LineItem], lambda p: p.right.basket_id),
         zero=float,
         pick_value=pick_price,
     )
@@ -81,7 +81,7 @@ def query(
 
 `st.join(...)` is equivalent to a `LEFT INNER JOIN`, there is also `st.outer_join(...)`.
 
-`st.pick_index(...)` picks fields from a type. These indexes are used by the `Store` later to ensure that querying past data is efficient.
+`st.Index.pick(...)` picks fields from a type. These indexes are used by the `Store` later to ensure that querying past data is efficient.
 
 `st.group_reduce_flatten(...)` is equivalent to `SELECT sum(...) FROM ... GROUP BY basket_id`. _Unlike in SQL, the group, reduce and flatten can be decomposed, see the [definition](https://github.com/search?q=repo%3Aleontrolski%2Fstepping+%22def+group_reduce_flatten_lifted%22&type=code)._
 
@@ -128,16 +128,16 @@ The `store` is where we put data that we need persisting between execution itera
 ```python [/docs/snippets/test_writing_queries.py::inserting]
 (product_action, line_item_action) = st.actions(store, graph)
 
-product_action.insert(Product(name="tv", price=3))
-product_action.insert(Product(name="radio", price=5))
+product_action.insert(Product(name="tv", price=3.0))
+product_action.insert(Product(name="radio", price=5.0))
 line_item_action.insert(
     LineItem(basket_id=1, product_name="radio", qty=4),
     LineItem(basket_id=1, product_name="tv", qty=1),
     LineItem(basket_id=2, product_name="tv", qty=2),
 )
 product_action.replace(
-    Product(name="tv", price=3),
-    Product(name="tv", price=4),
+    Product(name="tv", price=3.0),
+    Product(name="tv", price=4.0),
 )
 ```
 
@@ -154,12 +154,13 @@ print(output)
 `cache.zset(...)` should return a `ZSet[str]`, in this case:
 
 ```
-╭───────────┬───────────────────────────╮
+╒═══════════╤═══════════════════════════╕
 │   _count_ │ _value_                   │
-├───────────┼───────────────────────────┤
+╞═══════════╪═══════════════════════════╡
 │         1 │ Basket id: 2 total: $8.0  │
+├───────────┼───────────────────────────┤
 │         1 │ Basket id: 1 total: $24.0 │
-╰───────────┴───────────────────────────╯
+╘═══════════╧═══════════════════════════╛
 ```
 
 
@@ -191,21 +192,24 @@ This also demonstrates how removing/updating data is implemented with `ZSet`s (n
 
 ```python [/docs/snippets/test_writing_queries.py::iteration]
 iteration_output = product_action.replace(
-    Product(name="tv", price=4),
-    Product(name="tv", price=5),
+    Product(name="tv", price=4.0),
+    Product(name="tv", price=5.0),
 )
 print(iteration_output)
 ```
 
 ```
-╭───────────┬─────────────────────┬─────────────────────────────────────╮
-│   _count_ │ left                │ right                               │
-├───────────┼─────────────────────┼─────────────────────────────────────┤
-│         1 │ name='tv' price=5.0 │ basket_id=1 product_name='tv' qty=1 │
-│        -1 │ name='tv' price=4.0 │ basket_id=2 product_name='tv' qty=2 │
-│        -1 │ name='tv' price=4.0 │ basket_id=1 product_name='tv' qty=1 │
-│         1 │ name='tv' price=5.0 │ basket_id=2 product_name='tv' qty=2 │
-╰───────────┴─────────────────────┴─────────────────────────────────────╯
+╒═══════════╤═══════════════════════════════╤═════════════════════════════════════════════════╕
+│   _count_ │ left                          │ right                                           │
+╞═══════════╪═══════════════════════════════╪═════════════════════════════════════════════════╡
+│        -1 │ Product(name='tv', price=4.0) │ LineItem(basket_id=2, product_name='tv', qty=2) │
+├───────────┼───────────────────────────────┼─────────────────────────────────────────────────┤
+│         1 │ Product(name='tv', price=5.0) │ LineItem(basket_id=2, product_name='tv', qty=2) │
+├───────────┼───────────────────────────────┼─────────────────────────────────────────────────┤
+│        -1 │ Product(name='tv', price=4.0) │ LineItem(basket_id=1, product_name='tv', qty=1) │
+├───────────┼───────────────────────────────┼─────────────────────────────────────────────────┤
+│         1 │ Product(name='tv', price=5.0) │ LineItem(basket_id=1, product_name='tv', qty=1) │
+╘═══════════╧═══════════════════════════════╧═════════════════════════════════════════════════╛
 ```
 
 <br>

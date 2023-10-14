@@ -1,7 +1,10 @@
 import cProfile
 import pathlib
+import random
 from textwrap import dedent
+import time
 from typing import Any
+import concurrent.futures
 
 import stepping as st
 
@@ -13,7 +16,10 @@ SQLITE_PATH_LOADS = pathlib.Path(__file__).parent / "stepping-docs-test-typechec
 class Class(st.Data):
     identifier: str  # eg: "one.A"
     attrs: tuple[tuple[str, str], ...]
+
+
 # /reference: class-class
+
 
 class Attr(st.Data):
     identifier: str  # eg: "one.A"
@@ -74,6 +80,7 @@ def resolve(
 
 output_cache = st.Cache[Resolved]()
 
+
 # reference: query
 def link_attrs(classes: st.ZSet[Class]) -> st.ZSet[Resolved]:
     attrs = st.map_many(classes, f=to_many_attrs)
@@ -83,24 +90,26 @@ def link_attrs(classes: st.ZSet[Class]) -> st.ZSet[Resolved]:
     from_to = st.join(
         all_edges,
         classes,
-        on_left=st.pick_index(st.Pair[str, str], lambda p: p.right),
-        on_right=st.pick_index(Class, lambda a: a.identifier),
+        on_left=st.Index.pick(st.Pair[str, str], lambda p: p.right),
+        on_right=st.Index.pick(Class, lambda a: a.identifier),
     )
     grouped_by_from_identifier = st.group_reduce_flatten(
         from_to,
-        by=st.pick_index(st.Pair[st.Pair[str, str], Class], lambda p: p.left.left),
+        by=st.Index.pick(st.Pair[st.Pair[str, str], Class], lambda p: p.left.left),
         zero=zset_zero,
         pick_value=pick_zset,
     )
     from_joined_to_relevant = st.outer_join(
         classes,
         grouped_by_from_identifier,
-        on_left=st.pick_index(Class, lambda a: a.identifier),
-        on_right=st.pick_index(st.Pair[st.ZSetPython[Class], str], lambda p: p.right),
+        on_left=st.Index.pick(Class, lambda a: a.identifier),
+        on_right=st.Index.pick(st.Pair[st.ZSetPython[Class], str], lambda p: p.right),
     )
     resolved = st.map(from_joined_to_relevant, f=resolve)
-    _ = output_cache[resolved](lambda r:  st.integrate(r))
+    _ = output_cache[resolved](lambda r: st.integrate(r))
     return resolved
+
+
 # /reference: query
 
 
@@ -117,8 +126,11 @@ graph = st.compile_lazy(link_attrs)
 
 def test_typechecker(request: Any) -> None:
     SQLITE_PATH.unlink(missing_ok=True)
-    if request.config.getoption("--write-graphs"):
-        st.write_png(graph(), "graphs/test_typechecker.png")
+    try:
+        if request.config.getoption("--write-graphs"):
+            st.write_png(graph(), "graphs/test_typechecker.png")
+    except ValueError:
+        pass
 
     with st.connection_sqlite(SQLITE_PATH) as conn:
         store = st.StoreSQLite.from_graph(conn, graph(), create_tables=True)
@@ -130,21 +142,21 @@ def test_typechecker(request: Any) -> None:
         assert actual == st.ZSetPython({v: 1 for v in expected_output})
 
         expected = dedent(
-        """
+            """
             <ZSetPython>
-            ╒═══════════╤══════════════════════════════════════════════════════════════════════════════════════════════════╕
-            │   _count_ │ _value_                                                                                          │
-            ╞═══════════╪══════════════════════════════════════════════════════════════════════════════════════════════════╡
-            │         1 │ identifier='one.C' attrs=(A(key='z', value=(A(key='y', value=(A(key='x', value='str'),)),)),)    │
-            ├───────────┼──────────────────────────────────────────────────────────────────────────────────────────────────┤
-            │         1 │ identifier='one.B' attrs=(A(key='y', value=(A(key='x', value='str'),)),)                         │
-            ├───────────┼──────────────────────────────────────────────────────────────────────────────────────────────────┤
-            │         1 │ identifier='one.A' attrs=(A(key='x', value='str'),)                                              │
-            ├───────────┼──────────────────────────────────────────────────────────────────────────────────────────────────┤
-            │         1 │ identifier='two.E' attrs=(A(key='x', value='float'),)                                            │
-            ├───────────┼──────────────────────────────────────────────────────────────────────────────────────────────────┤
-            │         1 │ identifier='two.D' attrs=(A(key='y', value=(A(key='x', value='str'),)), A(key='z', value='int')) │
-            ╘═══════════╧══════════════════════════════════════════════════════════════════════════════════════════════════╛
+            ╒═══════════╤══════════════╤═════════════════════════════════════════════════════════════════════════╕
+            │   _count_ │ identifier   │ attrs                                                                   │
+            ╞═══════════╪══════════════╪═════════════════════════════════════════════════════════════════════════╡
+            │         1 │ one.A        │ (A(key='x', value='str'),)                                              │
+            ├───────────┼──────────────┼─────────────────────────────────────────────────────────────────────────┤
+            │         1 │ two.D        │ (A(key='y', value=(A(key='x', value='str'),)), A(key='z', value='int')) │
+            ├───────────┼──────────────┼─────────────────────────────────────────────────────────────────────────┤
+            │         1 │ two.E        │ (A(key='x', value='float'),)                                            │
+            ├───────────┼──────────────┼─────────────────────────────────────────────────────────────────────────┤
+            │         1 │ one.B        │ (A(key='y', value=(A(key='x', value='str'),)),)                         │
+            ├───────────┼──────────────┼─────────────────────────────────────────────────────────────────────────┤
+            │         1 │ one.C        │ (A(key='z', value=(A(key='y', value=(A(key='x', value='str'),)),)),)    │
+            ╘═══════════╧══════════════╧═════════════════════════════════════════════════════════════════════════╛
             """
         ).strip()
         assert set(str(actual).splitlines()) == set(expected.splitlines())
@@ -179,17 +191,17 @@ def test_typechecker(request: Any) -> None:
         assert actual == expected_removed
 
         expected = dedent(
-        """
+            """
             <ZSetPython>
-            ╒═══════════╤═══════════════════════════════════════════════════════════════════════════════════════════════╕
-            │   _count_ │ _value_                                                                                       │
-            ╞═══════════╪═══════════════════════════════════════════════════════════════════════════════════════════════╡
-            │        -1 │ identifier='one.C' attrs=(A(key='z', value=(A(key='y', value=(A(key='x', value='str'),)),)),) │
-            ├───────────┼───────────────────────────────────────────────────────────────────────────────────────────────┤
-            │         1 │ identifier='one.C' attrs=(A(key='z', value='one.B'),)                                         │
-            ├───────────┼───────────────────────────────────────────────────────────────────────────────────────────────┤
-            │        -1 │ identifier='one.B' attrs=(A(key='y', value=(A(key='x', value='str'),)),)                      │
-            ╘═══════════╧═══════════════════════════════════════════════════════════════════════════════════════════════╛
+            ╒═══════════╤══════════════╤══════════════════════════════════════════════════════════════════════╕
+            │   _count_ │ identifier   │ attrs                                                                │
+            ╞═══════════╪══════════════╪══════════════════════════════════════════════════════════════════════╡
+            │        -1 │ one.B        │ (A(key='y', value=(A(key='x', value='str'),)),)                      │
+            ├───────────┼──────────────┼──────────────────────────────────────────────────────────────────────┤
+            │         1 │ one.C        │ (A(key='z', value='one.B'),)                                         │
+            ├───────────┼──────────────┼──────────────────────────────────────────────────────────────────────┤
+            │        -1 │ one.C        │ (A(key='z', value=(A(key='y', value=(A(key='x', value='str'),)),)),) │
+            ╘═══════════╧══════════════╧══════════════════════════════════════════════════════════════════════╛
             """
         ).strip()
         assert set(str(actual).splitlines()) == set(expected.splitlines())
@@ -203,6 +215,7 @@ def test_read_tables_again() -> None:
         assert len(list(zset.to_python().iter())) == 3
 
     SQLITE_PATH.unlink()
+
 
 # reference: input-data
 input_data = [
@@ -272,5 +285,58 @@ def test_typechecker_make_loads(request: Any) -> None:
         with cProfile.Profile() as pr:
             action.insert(*input_data)
         pr.dump_stats("test_typechecker_make_loads.prof")
+
+    SQLITE_PATH_LOADS.unlink()
+
+
+def _insert_chunk(chunk: list[Class], time: st.Time) -> None:
+    with st.connection_sqlite(SQLITE_PATH_LOADS) as conn:
+        store = st.StoreSQLite.from_graph(conn, graph(), create_tables=False)
+        (action,) = st.actions(store, graph())
+        action.insert(*chunk, time=time)
+
+
+def test_typechecker_parallel(request: Any) -> None:
+    SQLITE_PATH_LOADS.unlink(missing_ok=True)
+
+    N = 10_000
+    N = 10
+    input_data_loads = list[Class]()
+    for i in range(N):
+        input_data_loads.extend(
+            [
+                Class(identifier=f"one.A.{i}", attrs=(("x", "str"),)),
+                Class(identifier=f"one.B.{i}", attrs=(("y", f"one.A.{i}"),)),
+                Class(identifier=f"one.C.{i}", attrs=(("z", f"one.B.{i}"),)),
+                Class(
+                    identifier=f"two.D.{i}", attrs=(("y", f"one.A.{i}"), ("z", "int"))
+                ),
+                Class(identifier=f"two.E.{i}", attrs=(("x", "float"),)),
+            ]
+        )
+
+    with st.connection_sqlite(SQLITE_PATH_LOADS) as conn:
+        store = st.StoreSQLite.from_graph(conn, graph(), create_tables=True)
+
+    batches = list(st.batched(input_data_loads, 1000))
+    random.shuffle(batches)
+    times = [st.Time(i, i-1, flush_every_set=True) for i, _ in enumerate(batches, start=1)]
+
+    PARALLEL = True
+    before = time.time()
+    if PARALLEL:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=4) as executor:
+            for _ in executor.map(_insert_chunk, batches, times):
+                pass
+    else:
+        for batch, t in zip(batches, times):
+            _insert_chunk(batch, t)
+    print(f"took {time.time() - before}s, {N=} {PARALLEL=}")
+
+    with st.connection_sqlite(SQLITE_PATH_LOADS) as conn:
+        store = st.StoreSQLite.from_graph(conn, graph(), create_tables=False)
+        zset = output_cache.zset(store)
+        assert isinstance(zset, st.ZSetSQLite)
+        assert len(list(zset.to_python().iter())) == len(input_data_loads)
 
     SQLITE_PATH_LOADS.unlink()

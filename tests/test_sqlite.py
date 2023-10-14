@@ -1,16 +1,19 @@
 from __future__ import annotations
 
-import pathlib
 import subprocess
-from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from typing import Any
 
-import pytest
-
-from stepping.types import Data, SerializableObject, ZSet, pick_identity, pick_index
+from stepping.steppingpack import Data
+from stepping.types import Index, ZSet
 from stepping.zset import functions
 from stepping.zset.python import ZSetPython
 from stepping.zset.sql import generic, sqlite
+
+
+def _flush(z: generic.ZSetSQL[Any]) -> None:
+    z.upsert()
+    z.changes = ()
 
 
 def dump_schema(conn: generic.ConnSQLite) -> str:
@@ -20,8 +23,8 @@ def dump_schema(conn: generic.ConnSQLite) -> str:
 
 def test_create_table(sqlite_conn: generic.ConnSQLite) -> None:
     cur = sqlite_conn.cursor()
-    ix = pick_identity(int)
-    sqlite.ZSetSQLite[int](cur, int, generic.Table("foo"), (ix,))
+    ix = Index.identity(int)
+    sqlite.ZSetSQLite[int](cur, int, "foo", (ix,))
 
 
 class Animal(Data):
@@ -34,18 +37,18 @@ class Animal(Data):
 def test_typing(sqlite_conn: generic.ConnSQLite) -> None:
     cur = sqlite_conn.cursor()
 
-    animal: SerializableObject = Animal(
+    animal = Animal(
         name="fido",
         sound="woof",
         age=38,
         created=datetime(2022, 1, 1, tzinfo=timezone.utc),
     )
-    z: ZSet[int] = sqlite.ZSetSQLite[int](cur, int, generic.Table("foo"), ())
+    z: ZSet[int] = sqlite.ZSetSQLite[int](cur, int, "foo", ())
 
 
 def test_write_simple_int(sqlite_conn: generic.ConnSQLite) -> None:
     cur = sqlite_conn.cursor()
-    z = sqlite.ZSetSQLite(cur, int, generic.Table("foo"), ())
+    z = sqlite.ZSetSQLite(cur, int, "foo", ())
     z.create_data_table()
     changes = ZSetPython({42: 1, 56: 2, 78: -1})
     z += changes
@@ -53,7 +56,7 @@ def test_write_simple_int(sqlite_conn: generic.ConnSQLite) -> None:
     actual = list(z.iter(frozenset((42, 78))))
     assert actual == [(42, 1), (78, -1)]
 
-    z.flush_changes()
+    _flush(z)
     assert z.to_python() == changes
 
     actual = list(z.iter(frozenset((42, 78))))
@@ -62,26 +65,26 @@ def test_write_simple_int(sqlite_conn: generic.ConnSQLite) -> None:
 
 def test_write_simple_int_with_index(sqlite_conn: generic.ConnSQLite) -> None:
     cur = sqlite_conn.cursor()
-    z = sqlite.ZSetSQLite(cur, int, generic.Table("foo"), (pick_identity(int),))
+    z = sqlite.ZSetSQLite(cur, int, "foo", (Index.identity(int),))
     z.create_data_table()
     changes = ZSetPython({42: 1, 56: 2})
     z += changes
-    z.flush_changes()
+    _flush(z)
     assert z.to_python() == changes
 
     sqlite_conn.commit()
     schema = dump_schema(sqlite_conn)
-    ix_str = "CREATE INDEX ix__foo__identity ON foo(CAST(data AS INTEGER))"
-    assert ix_str in schema
+    assert "ixd__identity__identity INTEGER NOT NULL" in schema
+    assert "CREATE INDEX ix__foo__identity ON foo(ixd__identity__identity)" in schema
 
 
 def test_write_simple_date(sqlite_conn: generic.ConnSQLite) -> None:
     cur = sqlite_conn.cursor()
-    z = sqlite.ZSetSQLite(cur, date, generic.Table("foo"), ())
+    z = sqlite.ZSetSQLite(cur, date, "foo", ())
     z.create_data_table()
     changes = ZSetPython({date(2021, 1, 3): 1, date(2021, 1, 4): -2})
     z += changes
-    z.flush_changes()
+    _flush(z)
     assert z.to_python() == changes
 
 
@@ -90,24 +93,24 @@ def test_write_simple_date_with_index(sqlite_conn: generic.ConnSQLite) -> None:
     z = sqlite.ZSetSQLite(
         cur,
         date,
-        generic.Table("foo"),
-        (pick_identity(date),),
+        "foo",
+        (Index.identity(date),),
     )
     z.create_data_table()
     changes = ZSetPython({date(2021, 1, 3): 1, date(2021, 1, 4): -2})
     z += changes
-    z.flush_changes()
+    _flush(z)
     assert z.to_python() == changes
 
     sqlite_conn.commit()
     schema = dump_schema(sqlite_conn)
-    ix_str = "CREATE INDEX ix__foo__identity ON foo(CAST(data AS TEXT))"
-    assert ix_str in schema
+    assert "ixd__identity__identity TEXT NOT NULL" in schema
+    assert "CREATE INDEX ix__foo__identity ON foo(ixd__identity__identity)" in schema
 
 
 def test_write_complex(sqlite_conn: generic.ConnSQLite) -> None:
     cur = sqlite_conn.cursor()
-    z = sqlite.ZSetSQLite(cur, Animal, generic.Table("foo"), ())
+    z = sqlite.ZSetSQLite(cur, Animal, "foo", ())
     z.create_data_table()
 
     animal = Animal(
@@ -118,13 +121,13 @@ def test_write_complex(sqlite_conn: generic.ConnSQLite) -> None:
     )
     changes = ZSetPython({animal: 2})
     z += changes
-    z.flush_changes()
+    _flush(z)
     assert z.to_python() == changes
 
 
 def test_write_complex_update(sqlite_conn: generic.ConnSQLite) -> None:
     cur = sqlite_conn.cursor()
-    z = sqlite.ZSetSQLite(cur, Animal, generic.Table("foo"), ())
+    z = sqlite.ZSetSQLite(cur, Animal, "foo", ())
     z.create_data_table()
 
     animal = Animal(
@@ -142,12 +145,12 @@ def test_write_complex_update(sqlite_conn: generic.ConnSQLite) -> None:
 
     changes = ZSetPython({animal: 1})
     z += changes
-    z.flush_changes()
+    _flush(z)
     assert z.to_python() == changes
 
     changes = ZSetPython({animal: -1, animal_new: 1})
     z += changes
-    z.flush_changes()
+    _flush(z)
 
     expected = ZSetPython({animal_new: 1})
     assert z.to_python() == expected
@@ -166,17 +169,17 @@ class Foo(Data):
 
 def test_schema_made_and_used(sqlite_conn: generic.ConnSQLite) -> None:
     cur = sqlite_conn.cursor()
-    ix_namely = pick_index(Foo, lambda f: f.name)
-    ix_name_and_age = pick_index(Foo, lambda f: (f.name, f.age))
-    ix_parent_bingo = pick_index(
+    ix_namely = Index.pick(Foo, lambda f: f.name)
+    ix_name_and_age = Index.pick(Foo, lambda f: (f.name, f.age))
+    ix_parent_bingo = Index.pick(
         Foo, lambda f: (f.name, f.parent.bingo), ascending=(False, True)
     )
-    ix_created = pick_index(Foo, lambda f: f.created)
+    ix_created = Index.pick(Foo, lambda f: f.created)
 
     z = sqlite.ZSetSQLite(
         cur,
         Foo,
-        generic.Table("foo"),
+        "foo",
         (ix_namely, ix_name_and_age, ix_parent_bingo, ix_created),
     )
     z.create_data_table()
@@ -197,19 +200,25 @@ def test_schema_made_and_used(sqlite_conn: generic.ConnSQLite) -> None:
         }
     )
     z += changes
-    z.flush_changes()
+    _flush(z)
 
     actual = list(z.iter(frozenset((first_foo,))))
     assert actual == [(first_foo, 1)]
 
     sqlite_conn.commit()
     schema = dump_schema(sqlite_conn)
-    ix_str = "CREATE INDEX ix__foo__name ON foo(CAST((data ->> '$.name') AS TEXT))"
-    assert ix_str in schema
-    ix_str = "CREATE INDEX ix__foo__name__age ON foo(CAST((data ->> '$.name') AS TEXT), CAST((data ->> '$.age') AS INTEGER))"
-    assert ix_str in schema
-    ix_str = "CREATE INDEX ix__foo__name__parent_bingo ON foo(CAST((data ->> '$.name') AS TEXT) DESC, CAST((data ->> '$.parent.bingo') AS TEXT))"
-    assert ix_str in schema
+
+    # fmt:off
+    assert "ixd__name_age__name TEXT NOT NULL" in schema
+    assert "ixd__name_age__age INTEGER NOT NULL" in schema
+    assert "ixd__name_parent_bingo__name TEXT NOT NULL" in schema
+    assert "ixd__name_parent_bingo__parent_bingo TEXT NOT NULL" in schema
+    assert "ixd__created__created TEXT NOT NULL" in schema
+    assert "CREATE INDEX ix__foo__name ON foo(ixd__name__name)" in schema
+    assert "CREATE INDEX ix__foo__name_age ON foo(ixd__name_age__name, ixd__name_age__age)" in schema
+    assert "CREATE INDEX ix__foo__name_parent_bingo ON foo(ixd__name_parent_bingo__name DESC, ixd__name_parent_bingo__parent_bingo)" in schema
+    assert "CREATE INDEX ix__foo__created ON foo(ixd__created__created)" in schema
+    # fmt:on
 
     # plan = postgres.explain(
     #     sqlite_conn,
@@ -306,14 +315,14 @@ def _make_animal(age: int, day: int) -> Animal:
 
 def test_iter_is_sorted(sqlite_conn: generic.ConnSQLite) -> None:
     cur = sqlite_conn.cursor()
-    index = pick_index(Animal, lambda a: (a.age, a.created))
-    z = sqlite.ZSetSQLite(cur, Animal, generic.Table("foo"), (index,))
+    index = Index.pick(Animal, lambda a: (a.age, a.created))
+    z = sqlite.ZSetSQLite(cur, Animal, "foo", (index,))
     z.create_data_table()
 
     z += ZSetPython({_make_animal(1, 1): 1})
     z += ZSetPython({_make_animal(2, 2): 1})
     z += ZSetPython({_make_animal(2, 1): 1})
-    z.flush_changes()
+    _flush(z)
     z += ZSetPython({_make_animal(3, 2): 1})
     z += ZSetPython({_make_animal(1, 2): 1})
     z += ZSetPython({_make_animal(3, 1): 1})

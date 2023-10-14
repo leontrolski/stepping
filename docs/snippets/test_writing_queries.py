@@ -38,12 +38,12 @@ def query(
     joined = st.join(
         products,
         line_items,
-        on_left=st.pick_index(Product, lambda p: p.name),
-        on_right=st.pick_index(LineItem, lambda l: l.product_name),
+        on_left=st.Index.pick(Product, lambda p: p.name),
+        on_right=st.Index.pick(LineItem, lambda l: l.product_name),
     )
     grouped = st.group_reduce_flatten(
         joined,
-        by=st.pick_index(st.Pair[Product, LineItem], lambda p: p.right.basket_id),
+        by=st.Index.pick(st.Pair[Product, LineItem], lambda p: p.right.basket_id),
         zero=float,
         pick_value=pick_price,
     )
@@ -63,16 +63,16 @@ def test_sum_python() -> None:
     # reference: inserting
     (product_action, line_item_action) = st.actions(store, graph)
 
-    product_action.insert(Product(name="tv", price=3))
-    product_action.insert(Product(name="radio", price=5))
+    product_action.insert(Product(name="tv", price=3.0))
+    product_action.insert(Product(name="radio", price=5.0))
     line_item_action.insert(
         LineItem(basket_id=1, product_name="radio", qty=4),
         LineItem(basket_id=1, product_name="tv", qty=1),
         LineItem(basket_id=2, product_name="tv", qty=2),
     )
     product_action.replace(
-        Product(name="tv", price=3),
-        Product(name="tv", price=4),
+        Product(name="tv", price=3.0),
+        Product(name="tv", price=4.0),
     )
     # /reference: inserting
 
@@ -93,8 +93,8 @@ def test_sum_python() -> None:
 
     # reference: iteration
     iteration_output = product_action.replace(
-        Product(name="tv", price=4),
-        Product(name="tv", price=5),
+        Product(name="tv", price=4.0),
+        Product(name="tv", price=5.0),
     )
     print(iteration_output)
     # /reference: iteration
@@ -102,17 +102,17 @@ def test_sum_python() -> None:
     expected = dedent(
         """
         <ZSetPython>
-        ╒═══════════╤═════════════════════╤═════════════════════════════════════╕
-        │   _count_ │ left                │ right                               │
-        ╞═══════════╪═════════════════════╪═════════════════════════════════════╡
-        │         1 │ name='tv' price=5.0 │ basket_id=1 product_name='tv' qty=1 │
-        ├───────────┼─────────────────────┼─────────────────────────────────────┤
-        │         1 │ name='tv' price=5.0 │ basket_id=2 product_name='tv' qty=2 │
-        ├───────────┼─────────────────────┼─────────────────────────────────────┤
-        │        -1 │ name='tv' price=4.0 │ basket_id=2 product_name='tv' qty=2 │
-        ├───────────┼─────────────────────┼─────────────────────────────────────┤
-        │        -1 │ name='tv' price=4.0 │ basket_id=1 product_name='tv' qty=1 │
-        ╘═══════════╧═════════════════════╧═════════════════════════════════════╛
+        ╒═══════════╤═══════════════════════════════╤═════════════════════════════════════════════════╕
+        │   _count_ │ left                          │ right                                           │
+        ╞═══════════╪═══════════════════════════════╪═════════════════════════════════════════════════╡
+        │        -1 │ Product(name='tv', price=4.0) │ LineItem(basket_id=2, product_name='tv', qty=2) │
+        ├───────────┼───────────────────────────────┼─────────────────────────────────────────────────┤
+        │         1 │ Product(name='tv', price=5.0) │ LineItem(basket_id=2, product_name='tv', qty=2) │
+        ├───────────┼───────────────────────────────┼─────────────────────────────────────────────────┤
+        │        -1 │ Product(name='tv', price=4.0) │ LineItem(basket_id=1, product_name='tv', qty=1) │
+        ├───────────┼───────────────────────────────┼─────────────────────────────────────────────────┤
+        │         1 │ Product(name='tv', price=5.0) │ LineItem(basket_id=1, product_name='tv', qty=1) │
+        ╘═══════════╧═══════════════════════════════╧═════════════════════════════════════════════════╛
         """
     ).strip()
     assert set(actual.splitlines()) == set(expected.splitlines())

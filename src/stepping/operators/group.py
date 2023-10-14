@@ -1,19 +1,10 @@
+from dataclasses import replace
 from typing import Any
 
 from stepping import zset
 from stepping.graph import A1, Graph, OperatorKind, Path, VertexUnary
 from stepping.operators import builder, linear
-from stepping.types import (
-    Empty,
-    Grouped,
-    Index,
-    K,
-    Pair,
-    Signature,
-    T,
-    ZSet,
-    pick_index,
-)
+from stepping.types import Empty, Grouped, Index, K, Pair, Signature, T, ZSet
 from stepping.zset import functions
 from stepping.zset.python import ZSetPython
 
@@ -33,21 +24,21 @@ def group(a: ZSet[T], *, by: Index[T, K]) -> Grouped[ZSet[T], K]:
 
 @builder.vertex(OperatorKind.flatten)
 def flatten(a: Grouped[ZSet[T], K]) -> ZSet[Pair[T, K]]:
-    out = ZSetPython[Pair[T, K]]()
-    for z, key in a.iter():
-        for v, count in z.iter():
-            out += ZSetPython({Pair(v, key): count})
-    return out
+    return ZSetPython[Pair[T, K]](
+        (Pair(v, key), count) for z, key in a.iter() for v, count in z.iter()
+    )
 
 
 @builder.vertex(OperatorKind.make_indexed_pairs)
 def make_indexed_pairs(
     a: Grouped[ZSet[T], K], *, index: Index[Pair[T, K], K]
 ) -> ZSet[Pair[T, K]]:
-    z = ZSetPython[Pair[T, K]](indexes=(index,))
-    for inner, key in a.iter():
-        z += functions.map(inner, lambda value: Pair(value, key))
-    return z
+    out = ZSetPython[Pair[T, K]](indexes=(index,))
+    return out + ZSetPython[Pair[T, K]](
+        (Pair(value, key), count)
+        for inner, key in a.iter()
+        for value, count in inner.iter()
+    )
 
 
 @builder.vertex(OperatorKind.make_grouped)
@@ -98,7 +89,7 @@ def wrap_delay(
     k: type[K],
     first_vertex: VertexUnary[Any, Grouped[Any, K]],
 ) -> Graph[A1[Grouped[ZSet[T], K]], Grouped[ZSet[T], K]]:
-    index = pick_index(
+    index = Index.pick(
         Pair[t, k],  # type: ignore[valid-type]
         lambda p: p.right,
     )
@@ -112,10 +103,11 @@ def wrap_delay(
         ),
         path,
     )
-    for from_vertex, [to_vertex, i] in list(graph.internal):
+    for from_p, [to_p, i] in list(graph.internal):
+        to_vertex = graph.vertices[to_p]
         if to_vertex.operator_kind is OperatorKind.get_keys:
-            to_vertex.t = first_vertex.v
-            graph.internal.remove((from_vertex, (to_vertex, i)))
-            graph.internal.add((first_vertex, (to_vertex, i)))
+            graph.vertices[to_p] = replace(to_vertex, t=first_vertex.v)
+            graph.internal.remove((from_p, (to_p, i)))
+            graph.internal.add((first_vertex.path, (to_p, i)))
 
     return graph

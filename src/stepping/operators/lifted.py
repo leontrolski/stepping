@@ -15,8 +15,8 @@ from stepping.types import (
     U,
     ZSet,
     get_annotation_zset,
-    pick_index,
 )
+from stepping.zset.python import ZSetPython
 
 
 def distinct_lifted(a: ZSet[T]) -> ZSet[T]:
@@ -71,6 +71,12 @@ def _f_sum(
     z: ZSet[T],
 ) -> TReducable:
     total = zero()
+
+    # Performance enhancement
+    if isinstance(total, ZSetPython):
+        counted = [pick_value(v) * count for v, count in z.iter()]
+        return ZSetPython((v, count) for n in counted for v, count in n.iter())  # type: ignore
+
     for v, count in z.iter():
         total += pick_value(v) * count
     return total
@@ -162,11 +168,11 @@ def _transitive_closure(
     pass :shrug.
     """
     with builder.at_compile_time:
-        with_right: Index[Pair[TIndexable, TIndexable], TIndexable] = pick_index(
+        with_right: Index[Pair[TIndexable, TIndexable], TIndexable] = Index.pick(
             get_annotation_zset(builder.compile_typeof(a)),
             lambda row: row.right,
         )
-        with_left: Index[Pair[TIndexable, TIndexable], TIndexable] = pick_index(
+        with_left: Index[Pair[TIndexable, TIndexable], TIndexable] = Index.pick(
             get_annotation_zset(builder.compile_typeof(a)),
             lambda row: row.left,
         )

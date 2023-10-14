@@ -7,6 +7,7 @@ from stepping.graph import (
     Graph,
     OperatorKind,
     Path,
+    Vertex,
     VertexBinary,
     VertexUnary,
     write_png,
@@ -38,7 +39,7 @@ def connect(a: Graph[Any, Any], b: Graph[Any, Any]) -> Graph[Any, Any]:
     else:
         internal = {(a.output[i], b.input[i]) for i in range(len(a.output))}
     return Graph(
-        vertices=a.vertices + b.vertices,
+        vertices=a.vertices | b.vertices,
         input=a.input,
         internal=internal | a.internal | b.internal,
         output=b.output,
@@ -55,15 +56,16 @@ def test_replace_vertex() -> None:
     graph = connect(connect(a1.as_graph, d1.as_graph), e1.as_graph)
     actual = replace_vertex(graph, d1, connect(f1.as_graph, g1.as_graph))
 
+    vertices: list[Vertex] = [a1, e1, f1, g1]
     expected = Graph[Any, Any](
-        vertices=[a1, e1, f1, g1],
-        input=[(a1, 0), (a1, 1)],
+        vertices={v.path: v for v in vertices},
+        input=[(a1.path, 0), (a1.path, 1)],
         internal={
-            (a1, (f1, 0)),
-            (f1, (g1, 0)),
-            (g1, (e1, 0)),
+            (a1.path, (f1.path, 0)),
+            (f1.path, (g1.path, 0)),
+            (g1.path, (e1.path, 0)),
         },
-        output=[e1],
+        output=[e1.path],
         run_no_output=[],
     )
     assert actual == expected
