@@ -94,10 +94,16 @@ Value = (
     Atom |
     tuple[Value, ...] |
     frozenset[Value] |
-    st.ZSetPython[Value] |
-    st.Pair[Value, Value] |
+    Dumpable |
     Data
 )
+```
+
+Where `Dumpable` is any class implementing:
+
+```python
+st_arity: ClassVar[Arity]
+st_astuple: tuple[Value, ...]
 ```
 
 It also has support for:
@@ -116,6 +122,5 @@ class DataC(steppingpack.Data):
 - _More types will be added, notably missing at the moment is `datetime.time`. Some kind of `FrozenDict` support would be nice too, especially if it played well with other types in `stepping.datatypes` (think hard about maintaining key order here and its applicability to serializing `ZSetPython`s too)._
 - _Migrating between types in production will be added as part of [stepping manager]({{< ref "/docs/in-production/stepping-manager.md" >}} "Stepping manager")._
 - _A version of [isjsonschemasubset](https://github.com/leontrolski/isjsonschemasubset) will be implemented to help with the above._
-- _Nicer serialization of schemas to help with the above, using class name not the class itself as key, or maybe adding an `int` index to each of the schemas (maybe move the reference to the original types back out of the class to enable Pydanticification)._
 - _Do more Rust-ification, especially for `dump_python` -- under the hood, `steppingpack` uses [ormsgpack](https://github.com/aviramha/ormsgpack), potentially even try upstream into that._
 - _Move into its own separate project?_

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
-from typing import Any, Iterator
+from typing import Any, ClassVar, Iterator
 
 from tabulate import tabulate
 
@@ -97,6 +97,18 @@ class ZSetPython(ZSetBodge[T]):
 
     def __hash__(self) -> int:
         return hash((tuple(self.iter())))
+
+    # steppingpack helpers
+
+    st_arity: ClassVar[steppingpack.Arity] = steppingpack.Arity.VARIADIC
+
+    @property
+    def st_astuple(self) -> tuple[tuple[T, int], ...]:
+        return tuple(sorted((v, c) for v, c in self.iter()))
+
+    @classmethod
+    def st_astuple_generic(cls, t: type) -> type:
+        return tuple[t, int]  # type: ignore[valid-type]
 
     # ZSet methods
 

@@ -23,6 +23,7 @@ mypy src tests
 
 ## Nice-to-haves
 
+- Implement `ZSetPython` as rust [btree](https://docs.rs/im/latest/im/ordmap/index.html).
 - In `interleave_changes`, use indexed `ZSetPython` under the hood.
 - Skip out the middle man with `Grouped` and just use an indexed `ZSet`? Does this lead to performance benefits in `st.group`?
 - Instead of `create_tables=True` can we emit SQL and write it.
@@ -33,6 +34,17 @@ mypy src tests
 - Replace `integrate_delay` with a nice transform. Similarly, transform shared delays.
 - Decide whether to make `...SQL` classes protocols.
 - Test arbitrary depth grouped nesting and joining in a grouped setting (Does this even make sense to do?).
+
+## Vague Ox plan
+
+- Fork `ormsgpack` - work out how versioning gubbins works.
+- Make dump extra quick - see https://github.com/gukoff/dtparse.
+- Make rust btree wrapper that implements:
+
+```
+OrderedMap[tuple[bytes | int | float, ...], bytes]
+ascending: tuple[bool, ...]
+```
 
 # Uploading to Pypi
 

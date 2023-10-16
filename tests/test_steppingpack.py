@@ -1,6 +1,5 @@
 import enum
 from datetime import UTC, date, datetime
-from unittest.mock import ANY
 from uuid import UUID
 
 import pytest
@@ -110,8 +109,14 @@ def test_make_schema_composite() -> None:
     assert steppingpack.make_schema(frozenset[str]) == steppingpack.SFrozenset(
         value=steppingpack.SAtom(type="str")
     )
-    assert steppingpack.make_schema(ZSetPython[str]) == steppingpack.SZSet(
-        value=steppingpack.SAtom(type="str")
+    assert steppingpack.make_schema(ZSetPython[str]) == steppingpack.SVariadic(
+        value=steppingpack.STuple(
+            values=(
+                steppingpack.SAtom(type="str"),
+                steppingpack.SAtom(type="int"),
+            ),
+            many=False,
+        )
     )
 
 
@@ -126,17 +131,17 @@ def test_make_schema_data() -> None:
     assert steppingpack.make_schema(DataB) == steppingpack.SData(
         pairs=(
             steppingpack.SDataPair(
-                name="x",
+                key="x",
                 value=steppingpack.SAtom(type="int"),
             ),
             steppingpack.SDataPair(
-                name="many",
+                key="many",
                 value=steppingpack.STuple(
                     values=(
                         steppingpack.SData(
                             pairs=(
                                 steppingpack.SDataPair(
-                                    name="a",
+                                    key="a",
                                     value=steppingpack.SAtom(type="str"),
                                     default=steppingpack.SNoValue(),
                                 ),
@@ -158,12 +163,12 @@ def test_make_schema_union_of_data() -> None:
                 type="data",
                 pairs=(
                     steppingpack.SDataPair(
-                        name="st_discriminant",
+                        key="st_discriminant",
                         value=steppingpack.SAtom(type="str"),
                         default="DataC",
                     ),
                     steppingpack.SDataPair(
-                        name="c",
+                        key="c",
                         value=steppingpack.SAtom(type="str"),
                         default=steppingpack.SNoValue(type="novalue"),
                     ),
@@ -175,12 +180,12 @@ def test_make_schema_union_of_data() -> None:
                 type="data",
                 pairs=(
                     steppingpack.SDataPair(
-                        name="st_discriminant",
+                        key="st_discriminant",
                         value=steppingpack.SAtom(type="str"),
                         default="DataD",
                     ),
                     steppingpack.SDataPair(
-                        name="d",
+                        key="d",
                         value=steppingpack.SAtom(type="str"),
                         default=steppingpack.SNoValue(type="novalue"),
                     ),
@@ -270,8 +275,15 @@ def test_recursive() -> None:
     assert schema == steppingpack.SData(
         pairs=(
             steppingpack.SDataPair(
-                name="a",
-                value=steppingpack.STuple(values=(ANY,), many=True),
+                key="a",
+                value=steppingpack.STuple(
+                    values=(
+                        steppingpack.SReference(
+                            reference="tests.test_steppingpack.DataG"
+                        ),
+                    ),
+                    many=True,
+                ),
             ),
         ),
     )

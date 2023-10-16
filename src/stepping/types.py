@@ -8,6 +8,7 @@ from types import NoneType
 from typing import (
     Any,
     Callable,
+    ClassVar,
     Generic,
     Iterable,
     Iterator,
@@ -32,8 +33,8 @@ MATCH_ALL = MatchAll()
 class Empty:
     def __repr__(self) -> str: return "<EMPTY>"
 EMPTY = Empty()
-IndexableAtom = str | int | float | bool | None | date | datetime | UUID
-Indexable = IndexableAtom | tuple[IndexableAtom, ...]
+IndexableAtom = steppingpack.Atom
+Indexable = steppingpack.ValueIndexable
 Serializable = steppingpack.Value
 
 class Addable(Protocol):
@@ -103,6 +104,14 @@ class TransformerBuilder(Protocol):
 class Pair(Generic[T, U]):
     left: T
     right: U
+
+    # steppingpack helpers
+
+    st_arity: ClassVar[steppingpack.Arity] = steppingpack.Arity.BINARY
+
+    @property
+    def st_astuple(self) -> tuple[T, U]:
+        return self.left, self.right
 
 
 @dataclass
@@ -325,6 +334,9 @@ def _name_type_map_from_dataclass(t: type) -> dict[str, type]:
     """
     original_t = get_origin(t) or t
     name_type_map = get_type_hints(original_t)
+    name_type_map = {
+        k: v for k, v in name_type_map.items() if not get_origin(v) is ClassVar
+    }
     if t != original_t:
         generic_args = _get_generic_args(original_t)
         assert len(generic_args) == len(get_args(t))

@@ -14,8 +14,8 @@ class SortedSet(Generic[TSerializable, K]):
     __slots__ = ("added", "removed", "btree", "index")
 
     def __init__(self, index: Index[TSerializable, K]) -> None:
-        self.added = immutables.Map[TSerializable, None]()
-        self.removed = immutables.Map[TSerializable, None]()
+        self.added = immutables.Map[TSerializable, None]()  # type: ignore[type-var]
+        self.removed = immutables.Map[TSerializable, None]()  # type: ignore[type-var]
         self.btree = Node[TSerializable, K]((), ())
         self.index = index
 
