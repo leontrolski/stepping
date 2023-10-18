@@ -1,13 +1,19 @@
 {{ define "main" }}
-<section class="section container-fluid mt-n3 pb-3">
+<section class="section container-fluid mt-n3 pb-3 pt-3">
   <div class="row justify-content-center">
-    <div class="col-lg-12 text-center">
-      <h1 class="mt-0">stepping</h1>
+    <div class="col-lg-9 text-center mt-2">
+      <h1 class="mt-0">stepping <sup><code><a class="ms-auto" href="/docs/getting-started/introduction/">Docs</a></code></sup></h1>
     </div>
-    <div class="col-lg-9 col-xl-8 text-center">
-      <p class="lead">Incremental View Maintenance for Python application developers.</p>
-      <p><pre><code>pip install stepping</code></pre></p>
-      <p class="meta">Based on <a href="https://arxiv.org/pdf/2203.16684.pdf">DBSP: Automatic Incremental View Maintenance for Rich Query Languages</a></p>
+    <div class="col-lg-9 col-xl-8 mt-4 text-center">
+      <p>
+        Choose declaratively describing your business logic.
+        Choose the warm safety of Postgres transactions.
+        Choose type safety.
+        Choose automagically efficient updates using the power of incremental view maintenance.
+        Choose Python.
+        Choose replacing the error-prone, hard-to-reason-about tangle of application code that exists as a poorly defined cache over your data.
+        Choose <b>stepping</b>.
+      </p>
     </div>
   </div>
 </section>
@@ -21,15 +27,47 @@
       <img alt="Overview" src="{{ $img.RelPermalink }}" style="max-height: 30rem;"/>
     </div>
   </section>
-  <div class="container justify-content-center text-center">
-    <a class="ms-auto" href="/docs/getting-started/introduction/">
-      <div class="card my-1">
-        <div class="card-body py-2">
-          To the docs &rarr; 
-        </div>
+
+  <section class="section section-sm">
+    <div class="container">
+      <div class="row justify-content-center text-center">
+        <p class="meta">
+          <small>
+            Based on <a href="https://arxiv.org/pdf/2203.16684.pdf">DBSP: Automatic Incremental View Maintenance for Rich Query Languages</a>
+          </small>
+        </p>
       </div>
+    </div>
+  </section>
+
+  <div class="container justify-content-center text-center">
+    <a class="ms-auto" href="/docs/getting-started/installation/">
+       <div class="card my-1">
+          <div class="card-body py-2">
+            Installation &rarr;
+          </div>
+       </div>
     </a>
   </div>
+  <div class="container justify-content-center text-center">
+    <a class="ms-auto" href="/docs/examples/meter-reads/">
+       <div class="card my-1">
+          <div class="card-body py-2">
+            Examples &rarr;
+          </div>
+       </div>
+    </a>
+  </div>
+  <div class="container justify-content-center text-center">
+    <a class="ms-auto" href="/docs/internals/motivation/">
+       <div class="card my-1">
+          <div class="card-body py-2">
+            Motivation &rarr;
+          </div>
+       </div>
+    </a>
+  </div>
+
   <section class="section section-sm">
     <div class="container">
       <div class="row justify-content-center text-center">
