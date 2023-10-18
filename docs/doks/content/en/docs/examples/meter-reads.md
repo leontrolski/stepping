@@ -17,6 +17,9 @@ toc: true
 
 We're an energy supplier, users have meters have reads, we'd like to sum up each meter's daily usage.
 
+With `stepping`, we're able to declaratively describe a query joining and grouping data. When we insert new data, it knows only to recompute what is necessary to update the output. When we're done inserting, we can easily retreive data back out from an indexed cache.
+
+
 ## Setup
 
 We're going to skip over most of the setup -- full details in [test_meter_reads.py](https://github.com/leontrolski/stepping/blob/main/docs/snippets/test_meter_reads.py).
@@ -217,7 +220,3 @@ expected = [
 ]
 assert actual == expected
 ```
-
-## Takeaway
-
-With `stepping`, we're able to declaratively describe a query joining and grouping data. When we insert new data, it knows only to recompute what is necessary to update the output. When we're done inserting, we can easily retreive data back out from an indexed cache.
