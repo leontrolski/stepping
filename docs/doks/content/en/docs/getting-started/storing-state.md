@@ -145,7 +145,7 @@ The next page has advice on setting up as Postgres connection for testing.
 
 ## Parallelism
 
-If you were to implement a webserver with many workers all tring to run iterations against the same store, consistency problems would arise very quickly.
+If you were to implement a webserver with many workers all trying to run iterations against the same store, consistency problems would arise very quickly.
 
 To solve this, `Action.insert(...)`/`Action.remove(...)`/`Action.replace(...)` each take an optional `time` parameter:
 
