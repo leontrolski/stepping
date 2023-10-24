@@ -25,6 +25,7 @@ mypy src tests
 
 - Implement `ZSetPython` as rust [btree](https://docs.rs/im/latest/im/ordmap/index.html).
 - In `interleave_changes`, use indexed `ZSetPython` under the hood.
+- Make non-assigns just go to `.run_no_output`
 - Skip out the middle man with `Grouped` and just use an indexed `ZSet`? Does this lead to performance benefits in `st.group`?
 - Instead of `create_tables=True` can we emit SQL and write it.
 - Revisit `st.compile(...)`.
