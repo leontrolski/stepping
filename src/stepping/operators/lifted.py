@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Any, Callable
+from typing import Any, Callable, get_args
 
 from stepping.operators import builder, group, linear, transform
 from stepping.types import (
@@ -7,7 +7,6 @@ from stepping.types import (
     Empty,
     Index,
     K,
-    Pair,
     T,
     TAddable,
     TIndexable,
@@ -28,7 +27,7 @@ def distinct_lifted(a: ZSet[T]) -> ZSet[T]:
 
 def join_lifted(
     l: ZSet[T], r: ZSet[U], *, on_left: Index[T, K], on_right: Index[U, K]
-) -> ZSet[Pair[T, U]]:
+) -> ZSet[tuple[T, U]]:
     """Theorem 5.5"""
     l_integrated = linear.integrate_indexed(l, indexes=(on_left,))
     r_integrated = linear.integrate_delay_indexed(r, indexes=(on_right,))
@@ -40,10 +39,10 @@ def join_lifted(
 
 def outer_join_lifted(
     l: ZSet[T], r: ZSet[U], *, on_left: Index[T, K], on_right: Index[U, K]
-) -> ZSet[Pair[T, U | Empty]]:
+) -> ZSet[tuple[T, U | Empty]]:
     with builder.at_compile_time:
-        just_left: Callable[[Pair[T, U]], T] = lambda p: p.left
-        make_empty_right: Callable[[T], Pair[T, Empty]] = lambda l: Pair(l, EMPTY)
+        just_left: Callable[[tuple[T, U]], T] = lambda p: p[0]
+        make_empty_right: Callable[[T], tuple[T, Empty]] = lambda l: (l, EMPTY)
 
     joined = join_lifted(l, r, on_left=on_left, on_right=on_right)
     lefted = linear.map(joined, f=just_left)
@@ -58,9 +57,12 @@ def _incrementalise_aggregate_linear(
     a: ZSet[T], *, f: Callable[[ZSet[T]], TAddable]
 ) -> ZSet[TAddable]:
     """Section 11.1"""
+    with builder.at_compile_time:
+        t_addable: type[TAddable] = get_args(builder.compile_typeof(f))[1]
+
     reduced = linear.reduce(a, f=f)
     integrated = linear.integrate(reduced)
-    setted = linear.make_set(integrated)
+    setted = linear.make_set(integrated, t=t_addable)
     differentiated = linear.differentiate(setted)
     return differentiated
 
@@ -75,7 +77,7 @@ def _f_sum(
     # Performance enhancement
     if isinstance(total, ZSetPython):
         counted = [pick_value(v) * count for v, count in z.iter()]
-        return ZSetPython((v, count) for n in counted for v, count in n.iter())  # type: ignore
+        return ZSetPython(z.t, ((v, count) for n in counted for v, count in n.iter()))  # type: ignore
 
     for v, count in z.iter():
         total += pick_value(v) * count
@@ -112,7 +114,10 @@ def count_lifted(
     a: ZSet[T],
 ) -> ZSet[int]:
     """Section 11.1"""
-    linearised = _incrementalise_aggregate_linear(a, f=_f_count)
+    with builder.at_compile_time:
+        f_count: Callable[[ZSet[T]], int] = _f_count
+
+    linearised = _incrementalise_aggregate_linear(a, f=f_count)
     return linearised
 
 
@@ -139,7 +144,7 @@ def group_reduce_flatten_lifted(
     by: Index[T, K],
     zero: Callable[[], TReducable],
     pick_value: Callable[[T], TReducable],
-) -> ZSet[Pair[TReducable, K]]:
+) -> ZSet[tuple[TReducable, K]]:
     grouped = group.group(a, by=by)
     reduced = transform.per_group[grouped](
         lambda g: reduce_lifted(g, zero=zero, pick_value=pick_value)
@@ -149,8 +154,8 @@ def group_reduce_flatten_lifted(
 
 
 def _transitive_closure(
-    a: ZSet[Pair[TIndexable, TIndexable]]
-) -> ZSet[Pair[TIndexable, TIndexable]]:
+    a: ZSet[tuple[TIndexable, TIndexable]]
+) -> ZSet[tuple[TIndexable, TIndexable]]:
     """Section 9.1
 
     As per:
@@ -168,20 +173,20 @@ def _transitive_closure(
     pass :shrug.
     """
     with builder.at_compile_time:
-        with_right: Index[Pair[TIndexable, TIndexable], TIndexable] = Index.pick(
+        with_right: Index[tuple[TIndexable, TIndexable], TIndexable] = Index.pick(
             get_annotation_zset(builder.compile_typeof(a)),
-            lambda row: row.right,
+            lambda row: row[1],
         )
-        with_left: Index[Pair[TIndexable, TIndexable], TIndexable] = Index.pick(
+        with_left: Index[tuple[TIndexable, TIndexable], TIndexable] = Index.pick(
             get_annotation_zset(builder.compile_typeof(a)),
-            lambda row: row.left,
+            lambda row: row[0],
         )
         pick_outers: Callable[
-            [Pair[Pair[TIndexable, TIndexable], Pair[TIndexable, TIndexable]]],
-            Pair[TIndexable, TIndexable],
-        ] = lambda p: Pair(p.left.left, p.right.right)
+            [tuple[tuple[TIndexable, TIndexable], tuple[TIndexable, TIndexable]]],
+            tuple[TIndexable, TIndexable],
+        ] = lambda p: (p[0][0], p[1][1])
 
-    delayed: ZSet[Pair[TIndexable, TIndexable]]
+    delayed: ZSet[tuple[TIndexable, TIndexable]]
 
     joined = join_lifted(a, delayed, on_left=with_right, on_right=with_left)
     picked_outers = linear.map(joined, f=pick_outers)
@@ -193,7 +198,7 @@ def _transitive_closure(
 
 
 def transitive_closure_lifted(
-    a: ZSet[Pair[TIndexable, TIndexable]]
-) -> ZSet[Pair[TIndexable, TIndexable]]:
+    a: ZSet[tuple[TIndexable, TIndexable]]
+) -> ZSet[tuple[TIndexable, TIndexable]]:
     recursed = transform.integrate_til_zero[a](lambda a: _transitive_closure(a))
     return recursed

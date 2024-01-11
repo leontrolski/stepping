@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, replace
-from typing import Any, Generic, Iterator, TypeVar, assert_never, overload
+from typing import Any, Generic, Iterator, TypeVar, assert_never, get_args, overload
 
 from stepping.graph import (
     A1,
@@ -105,7 +105,10 @@ def iteration(
                 a = f(a_vertex)
                 # Don't flush changes, then flush the changes for all delay vertices
                 no_flush = Time(time.input_time, time.frontier, flush_every_set=None)
-                cache[vertex] = _indefinite_integral(store, vertex.graph, a, no_flush)
+                (v,) = get_args(vertex.v)
+                cache[vertex] = _indefinite_integral(
+                    store, vertex.graph, v, a, no_flush
+                )
                 if time.flush_every_set is True:
                     store.flush(vertex.graph.delay_vertices, time)
             else:
@@ -153,23 +156,24 @@ def _make_cache(
     return {vertex: value for vertex, value in zip(passthroughs, inputs)}
 
 
-def _dirac_function(a: ZSet[T]) -> Iterator[ZSet[T]]:
+def _dirac_function(t: type[T], a: ZSet[T]) -> Iterator[ZSet[T]]:
     """Definition 7.1"""
     yield a
     while True:
-        yield ZSetPython[T]()
+        yield ZSetPython[T](t)
 
 
 def _indefinite_integral(
     store: Store,
     g: Graph[A1[ZSet[T]], A1[ZSet[V]]],
+    v: type[V],
     input_value: ZSet[T],
     time: Time,
 ) -> ZSet[V]:
     """Definition 7.2"""
-    out = ZSetPython[V]()
+    out = ZSetPython[V](v)
 
-    for v in _dirac_function(input_value):
+    for v in _dirac_function(v, input_value):
         (next_value,) = iteration(store, g, (v,), time)
         assert isinstance(next_value, ZSetPython)
         if next_value.empty():
@@ -183,27 +187,28 @@ def _indefinite_integral(
 class Action(Generic[T, V_co]):
     store: Store
     g: Graph[Any, Any]
+    t: type[T]
     i: int
 
     def insert(self, *inputs: T, time: Time = Time()) -> V_co:
         input_zsets = list[Any]()
-        input = ZSetPython[T]((n, 1) for n in inputs)
+        input = ZSetPython[T](self.t, ((n, 1) for n in inputs))
         for j, _ in enumerate(self.g.input):
-            input_zsets.append(input if self.i == j else ZSetPython[Any]())
+            input_zsets.append(input if self.i == j else ZSetPython[Any](None))
         return iteration(self.store, self.g, tuple(input_zsets), time=time)  # type: ignore[return-value,arg-type]
 
     def remove(self, *inputs: T, time: Time = Time()) -> V_co:
         input_zsets = list[Any]()
-        input = ZSetPython[T]((n, -1) for n in inputs)
+        input = ZSetPython[T](self.t, ((n, -1) for n in inputs))
         for j, _ in enumerate(self.g.input):
-            input_zsets.append(input if self.i == j else ZSetPython[Any]())
+            input_zsets.append(input if self.i == j else ZSetPython[Any](None))
         return iteration(self.store, self.g, tuple(input_zsets), time=time)  # type: ignore[return-value,arg-type]
 
     def replace(self, old: T, new: T, time: Time = Time()) -> V_co:
         input_zsets = list[Any]()
-        input = ZSetPython[T]({old: -1, new: 1})
+        input = ZSetPython[T](self.t, ((old, -1), (new, 1)))
         for j, _ in enumerate(self.g.input):
-            input_zsets.append(input if self.i == j else ZSetPython[Any]())
+            input_zsets.append(input if self.i == j else ZSetPython[Any](None))
         return iteration(self.store, self.g, tuple(input_zsets), time=time)  # type: ignore[return-value,arg-type]
 
 
@@ -246,6 +251,7 @@ def actions(
     g: Graph[Any, Any],
 ) -> Any:  # tuple[Action[Any, tuple[Any, ...]], ...]:
     fs = list[Action[Any, Any]]()
-    for i, _ in enumerate(g.input):
-        fs.append(Action(store, g, i))
+    for i, [path, _] in enumerate(g.input):
+        (t,) = get_args(g.vertices[path].t)
+        fs.append(Action(store, g, t, i))
     return tuple(fs)

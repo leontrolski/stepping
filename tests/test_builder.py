@@ -1,4 +1,4 @@
-from typing import Callable, Union
+from typing import Callable, Union, get_args
 
 import stepping as st
 from stepping import zset
@@ -11,7 +11,6 @@ from stepping.types import (
     Grouped,
     Index,
     K,
-    Pair,
     Signature,
     T,
     TAddable,
@@ -45,7 +44,7 @@ def first_n(a: ZSet[T], *, index: Index[T, K], n: int) -> ZSet[T]:
 
 @builder.vertex(OperatorKind.map)
 def map(a: ZSet[T], *, f: Callable[[T], V]) -> ZSet[V]:
-    return functions.map(a, f)
+    return functions.map(int, a, f)
 
 
 def add3(a: TAddable, b: TAddable, c: TAddable) -> TAddable:
@@ -121,15 +120,28 @@ def _str_y(a: "TAddable") -> TAddable:
     return a
 
 
-def use_delay_indexed_pair(a: ZSet[Pair[T, K]]) -> ZSet[Pair[T, K]]:
+def use_delay_indexed_pair(a: ZSet[tuple[T, K]]) -> ZSet[tuple[T, K]]:
     with st.at_compile_time:
-        index: Index[Pair[T, K], K] = st.Index.pick(
+        index: Index[tuple[T, K], K] = st.Index.pick(
             get_annotation_zset(st.compile_typeof(a)),
-            lambda p: p.right,
+            lambda p: p[1],
         )
 
     integrated = delay_indexed(a, index=index)
     return integrated
+
+@builder.vertex(OperatorKind.make_set)
+def make_set(a: T, *, t: type[T]) -> ZSet[T]:
+    return ZSetPython(t, [(a, 1)])
+
+def incrementalise_aggregate_linear(
+    a: ZSet[T], *, f: Callable[[ZSet[T]], TAddable]
+) -> ZSet[TAddable]:
+    with builder.at_compile_time:
+        t: type[T] = get_args(builder.compile_typeof(a))[0]
+
+    setted = make_set(a, t=t)
+    return setted
 
 
 def test_get_signature() -> None:
@@ -216,11 +228,11 @@ def test_internal() -> None:
         annotations={},
         with_assigns={
             ast.Target("index"): (
-                ast.TypeCode("Index[Pair[T, K], K]"),
+                ast.TypeCode("Index[tuple[T, K], K]"),
                 ast.Code(
                     "st.Index.pick("
                     "get_annotation_zset(st.compile_typeof(a)), "
-                    "lambda p: p.right)"
+                    "lambda p: p[1])"
                 ),
             ),
         },
@@ -243,22 +255,22 @@ class Class:
 
 def test_reduce_union() -> None:
     t = Union[
-        ZSet[Pair[Class, Pair[str, ZSetPython[Class]]]],
-        ZSet[Pair[Class, Empty]],
+        ZSet[tuple[Class, tuple[str, ZSetPython[Class]]]],
+        ZSet[tuple[Class, Empty]],
     ]
     actual = traverse._reduce_union(t)  # type: ignore[arg-type]
-    expected = ZSet[Pair[Class, Pair[str, ZSetPython[Class]] | Empty]]
+    expected = ZSet[tuple[Class, tuple[str, ZSetPython[Class]] | Empty]]
     assert actual == expected
 
 
 def test_resolve_type_outer() -> None:
     signature = Signature(args=[("a", T), ("b", T)], kwargs={}, ret=T)  # type: ignore
     type_scope = {
-        "a": ZSet[Pair[Class, Pair[str, ZSetPython[Class]]]],
-        "b": ZSet[Pair[Class, Empty]],
+        "a": ZSet[tuple[Class, tuple[str, ZSetPython[Class]]]],
+        "b": ZSet[tuple[Class, Empty]],
     }
     actual = traverse.resolve_type(type_scope, signature, signature.ret)  # type: ignore
-    expected = ZSet[Pair[Class, Pair[str, ZSetPython[Class]] | Empty]]
+    expected = ZSet[tuple[Class, tuple[str, ZSetPython[Class]] | Empty]]
     assert actual == expected
 
 
@@ -267,17 +279,15 @@ def test_replace_compile_typeof() -> None:
     ast._GLOBAL_KWARG_TYPES = []
 
     code = ast.Code(
-        "st.Index.pick("
-        "get_annotation_zset(st.compile_typeof(a)), "
-        "lambda p: p.right)"
+        "st.Index.pick(" "get_annotation_zset(st.compile_typeof(a)), " "lambda p: p[1])"
     )
-    actual = ast.replace_compile_typeof({"a": ZSet[Pair[str, int]]}, code)
+    actual = ast.replace_compile_typeof({"a": ZSet[tuple[str, int]]}, code)
     ast._GLOBAL_KWARG_TYPES = prev
 
     expected = ast.Code(
         "st.Index.pick("
         "get_annotation_zset(\n_GLOBAL_KWARG_TYPES[0]), "
-        "lambda p: p.right)"
+        "lambda p: p[1])"
     )
     assert actual == expected
 
@@ -421,10 +431,10 @@ def test_traverse_type() -> None:
         == Callable[[int], float]
     )
 
-    actual = list(traverse._traverse_type(ZSet[Pair[T, V]]))  # type: ignore
+    actual = list(traverse._traverse_type(ZSet[tuple[T, V]]))  # type: ignore
     expected = [
-        ((), ZSet[Pair[T, V]]),  # type: ignore
-        ((0,), Pair[T, V]),  # type: ignore
+        ((), ZSet[tuple[T, V]]),  # type: ignore
+        ((0,), tuple[T, V]),  # type: ignore
         ((0, 0), T),
         ((0, 1), V),
     ]
@@ -438,10 +448,10 @@ def test_set_type() -> None:
     actual = traverse._set_type(Callable[[int], V], (1,), float)  # type: ignore
     assert actual == Callable[[int], float]
 
-    original = ZSet[Pair[T, V]]
+    original = ZSet[tuple[T, V]]
     actual = traverse._set_type(original, (0, 1), float)
-    assert actual == ZSet[Pair[T, float]]  # type: ignore
-    assert original == ZSet[Pair[T, V]]  # type: ignore
+    assert actual == ZSet[tuple[T, float]]  # type: ignore
+    assert original == ZSet[tuple[T, V]]  # type: ignore
 
     original = ZSet[V]  # type: ignore
     actual = traverse._set_type(original, (0,), str)
@@ -580,9 +590,9 @@ def test_compile_double() -> None:
     actual = builder.compile_generic(double, {}, traverse.get_signature(double), Path())
 
     signature = Signature(
-        args=[("a", ZSet[Pair[str, int]])],
+        args=[("a", ZSet[tuple[str, int]])],
         kwargs={},
-        ret=ZSet[Pair[str, int]],
+        ret=ZSet[tuple[str, int]],
     )
     actual = builder.compile_generic(use_delay_indexed_pair, {}, signature, Path())
-    assert actual.vertices[actual.output[0]].v == ZSet[Pair[str, int]]
+    assert actual.vertices[actual.output[0]].v == ZSet[tuple[str, int]]

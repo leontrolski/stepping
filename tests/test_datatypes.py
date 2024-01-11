@@ -2,8 +2,11 @@ import cProfile
 from dataclasses import dataclass
 from datetime import date
 from random import randint
+from typing import Annotated as A
 
-from stepping import steppingpack, types
+import steppingpack
+
+from stepping import types
 from stepping.datatypes import _btree, sorted_set
 
 
@@ -62,17 +65,17 @@ def test_btree_basic_matching() -> None:
     for n in range(1000):
         s = s.add(n)
 
-    assert list(s.iter_matching(frozenset((0,)))) == [0]
-    assert list(s.iter_matching(frozenset((500,)))) == [500]
-    assert list(s.iter_matching(frozenset((999,)))) == [999]
-    assert list(s.iter_matching(frozenset((3,)))) == [3]
-    assert list(s.iter_matching(frozenset((800,)))) == [800]
-    assert list(s.iter_matching(frozenset((1001,)))) == []
+    assert list(s.iter_matching(tuple((0,)))) == [0]
+    assert list(s.iter_matching(tuple((500,)))) == [500]
+    assert list(s.iter_matching(tuple((999,)))) == [999]
+    assert list(s.iter_matching(tuple((3,)))) == [3]
+    assert list(s.iter_matching(tuple((800,)))) == [800]
+    assert list(s.iter_matching(tuple((1001,)))) == []
 
-    assert list(s.iter_matching(frozenset((500, 600)))) == [500, 600]
-    assert list(s.iter_matching(frozenset((600, 500)))) == [500, 600]
-    assert list(s.iter_matching(frozenset((600, 200, 1001)))) == [200, 600]
-    assert list(s.iter_matching(frozenset(()))) == []
+    assert list(s.iter_matching(tuple((500, 600)))) == [500, 600]
+    assert list(s.iter_matching(tuple((600, 500)))) == [500, 600]
+    assert list(s.iter_matching(tuple((600, 200, 1001)))) == [200, 600]
+    assert list(s.iter_matching(tuple(()))) == []
 
 
 def test_btree_tuple_matching() -> None:
@@ -95,8 +98,8 @@ def test_btree_tuple_matching() -> None:
 
 
 class Cat(steppingpack.Data):
-    age: date | None
-    name: str
+    age: A[date | None, 1]
+    name: A[str, 2]
 
 
 def test_btree_complex() -> None:

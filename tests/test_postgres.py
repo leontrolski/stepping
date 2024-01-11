@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import subprocess
 from datetime import date, datetime, timezone
+from typing import Annotated as A
 from typing import Any
 
-from stepping.steppingpack import Data
+from steppingpack import AwareUTCDatetime, Data
+
 from stepping.types import Index, ZSet
 from stepping.zset import functions
 from stepping.zset.python import ZSetPython
@@ -31,10 +33,10 @@ def test_create_table(postgres_conn: generic.ConnPostgres) -> None:
 
 
 class Animal(Data):
-    name: str
-    sound: str
-    age: int
-    created: datetime
+    name: A[str, 1]
+    sound: A[str, 2]
+    age: A[int, 3]
+    created: A[AwareUTCDatetime, 4]
 
 
 def test_typing(postgres_conn: generic.ConnPostgres) -> None:
@@ -52,16 +54,16 @@ def test_write_simple_int(postgres_conn: generic.ConnPostgres) -> None:
     cur = postgres_conn.cursor()
     z = postgres.ZSetPostgres(cur, int, "foo", ())
     z.create_data_table()
-    changes = ZSetPython({42: 1, 56: 2, 78: -1})
+    changes = ZSetPython(int, {42: 1, 56: 2, 78: -1})
     z += changes
 
-    actual = list(z.iter(frozenset((42, 78))))
+    actual = list(z.iter((42, 78)))
     assert actual == [(42, 1), (78, -1)]
 
     _flush(z)
     assert z.to_python() == changes
 
-    actual = list(z.iter(frozenset((42, 78))))
+    actual = list(z.iter(((42, 78))))
     assert actual == [(42, 1), (78, -1)]
 
 
@@ -69,7 +71,7 @@ def test_write_simple_int_with_index(postgres_conn: generic.ConnPostgres) -> Non
     cur = postgres_conn.cursor()
     z = postgres.ZSetPostgres(cur, int, "foo", (Index.identity(int),))
     z.create_data_table()
-    changes = ZSetPython({42: 1, 56: 2})
+    changes = ZSetPython(int, {42: 1, 56: 2})
     z += changes
     _flush(z)
     assert z.to_python() == changes
@@ -87,7 +89,7 @@ def test_write_simple_date(postgres_conn: generic.ConnPostgres) -> None:
     cur = postgres_conn.cursor()
     z = postgres.ZSetPostgres(cur, date, "foo", ())
     z.create_data_table()
-    changes = ZSetPython({date(2021, 1, 3): 1, date(2021, 1, 4): -2})
+    changes = ZSetPython(date, {date(2021, 1, 3): 1, date(2021, 1, 4): -2})
     z += changes
     _flush(z)
     assert z.to_python() == changes
@@ -102,7 +104,7 @@ def test_write_simple_date_with_index(postgres_conn: generic.ConnPostgres) -> No
         (Index.identity(date),),
     )
     z.create_data_table()
-    changes = ZSetPython({date(2021, 1, 3): 1, date(2021, 1, 4): -2})
+    changes = ZSetPython(date, {date(2021, 1, 3): 1, date(2021, 1, 4): -2})
     z += changes
     _flush(z)
     assert z.to_python() == changes
@@ -127,7 +129,7 @@ def test_write_complex(postgres_conn: generic.ConnPostgres) -> None:
         age=38,
         created=datetime(2022, 1, 1, tzinfo=timezone.utc),
     )
-    changes = ZSetPython({animal: 2})
+    changes = ZSetPython(Animal, [(animal, 2)])
     z += changes
     _flush(z)
     assert z.to_python() == changes
@@ -151,28 +153,28 @@ def test_write_complex_update(postgres_conn: generic.ConnPostgres) -> None:
         created=datetime(2022, 6, 1, tzinfo=timezone.utc),
     )
 
-    changes = ZSetPython({animal: 1})
+    changes = ZSetPython(Animal, [(animal, 1)])
     z += changes
     _flush(z)
     assert z.to_python() == changes
 
-    changes = ZSetPython({animal: -1, animal_new: 1})
+    changes = ZSetPython(Animal, [(animal, -1), (animal_new, 1)])
     z += changes
     _flush(z)
 
-    expected = ZSetPython({animal_new: 1})
+    expected = ZSetPython(Animal, [(animal_new, 1)])
     assert z.to_python() == expected
 
 
 class Bar(Data):
-    bingo: str
+    bingo: A[str, 1]
 
 
 class Foo(Data):
-    name: str | None
-    created: date
-    age: int
-    parent: Bar
+    name: A[str | None, 1]
+    created: A[date, 2]
+    age: A[int, 3]
+    parent: A[Bar, 4]
 
 
 def test_schema_made_and_used(postgres_conn: generic.ConnPostgres) -> None:
@@ -196,21 +198,25 @@ def test_schema_made_and_used(postgres_conn: generic.ConnPostgres) -> None:
         name="a-name", created=date(2023, 1, 4), age=23, parent=Bar(bingo="asd")
     )
     changes = ZSetPython(
-        {first_foo: 1}
-        | {
-            Foo(
-                name=f"some-name-{i % 3}",
-                created=date(2023, 1, 20),
-                age=i % 10,
-                parent=Bar(bingo=f"pi-{i}"),
-            ): 2
+        Foo,
+        [(first_foo, 1)]
+        + [
+            (
+                Foo(
+                    name=f"some-name-{i % 3}",
+                    created=date(2023, 1, 20),
+                    age=i % 10,
+                    parent=Bar(bingo=f"pi-{i}"),
+                ),
+                2,
+            )
             for i in range(33)
-        }
+        ],
     )
     z += changes
     _flush(z)
 
-    actual = list(z.iter(frozenset((first_foo,))))
+    actual = list(z.iter(((first_foo,))))
     assert actual == [(first_foo, 1)]
 
     postgres_conn.commit()

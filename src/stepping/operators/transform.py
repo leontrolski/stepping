@@ -135,10 +135,12 @@ def remove_identities(graph: Graph[T, V]) -> Graph[T, V]:
 
 @dataclass
 class LiftFunctionGroupedUnary(Generic[T, V, K]):
+    v: type[V]
+    k: type[K]
     f: Callable[[T], V]
 
     def __call__(self, a_grouped: Grouped[T, K]) -> Grouped[V, K]:
-        out = Grouped[V, K]()
+        out = Grouped[V, K](self.v, self.k)
         keys = a_grouped.keys()
         for key in keys:
             a = a_grouped.get(key)
@@ -150,12 +152,14 @@ class LiftFunctionGroupedUnary(Generic[T, V, K]):
 
 @dataclass
 class LiftFunctionGroupedBinary(Generic[T, U, V, K]):
+    v: type[V]
+    k: type[K]
     f: Callable[[T, U], V]
 
     def __call__(
         self, a_grouped: Grouped[T, K], b_grouped: Grouped[U, K]
     ) -> Grouped[V, K]:
-        out = Grouped[V, K]()
+        out = Grouped[V, K](self.v, self.k)
         keys = a_grouped.keys() | b_grouped.keys()
         for key in keys:
             a = a_grouped.get(key)
@@ -187,7 +191,7 @@ def lift_grouped(
         if isinstance(vertex, VertexUnary):
             g.vertices[p] = replace(
                 vertex,
-                f=LiftFunctionGroupedUnary(vertex.f),
+                f=LiftFunctionGroupedUnary(vertex.v, k, vertex.f),
                 t=Grouped[vertex.t, k],  # type: ignore
                 v=Grouped[vertex.v, k],  # type: ignore
             )
@@ -196,7 +200,7 @@ def lift_grouped(
                 raise RuntimeError("Can only lift ADD binary vertices to grouped")
             g.vertices[p] = replace(
                 vertex,
-                f=LiftFunctionGroupedBinary(vertex.f),
+                f=LiftFunctionGroupedBinary(vertex.v, k, vertex.f),
                 t=Grouped[vertex.t, k],  # type: ignore
                 u=Grouped[vertex.u, k],  # type: ignore
                 v=Grouped[vertex.v, k],  # type: ignore
@@ -206,7 +210,10 @@ def lift_grouped(
 
 
 def _set_and_back(a: T, *, zero: Callable[[], T]) -> T:
-    setted = linear.make_set(a)
+    with builder.at_compile_time:
+        t: type[T] = builder.compile_typeof(a)
+
+    setted = linear.make_set(a, t=t)
     delayed = linear.delay(setted)
     scalared = linear.make_scalar(delayed, zero=zero)
     return scalared

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import subprocess
 from datetime import date, datetime, timezone
+from typing import Annotated as A
 from typing import Any
 
-from stepping.steppingpack import Data
+from steppingpack import AwareUTCDatetime, Data
+
 from stepping.types import Index, ZSet
 from stepping.zset import functions
 from stepping.zset.python import ZSetPython
@@ -28,10 +30,10 @@ def test_create_table(sqlite_conn: generic.ConnSQLite) -> None:
 
 
 class Animal(Data):
-    name: str
-    sound: str
-    age: int
-    created: datetime
+    name: A[str, 1]
+    sound: A[str, 2]
+    age: A[int, 3]
+    created: A[AwareUTCDatetime, 4]
 
 
 def test_typing(sqlite_conn: generic.ConnSQLite) -> None:
@@ -50,16 +52,16 @@ def test_write_simple_int(sqlite_conn: generic.ConnSQLite) -> None:
     cur = sqlite_conn.cursor()
     z = sqlite.ZSetSQLite(cur, int, "foo", ())
     z.create_data_table()
-    changes = ZSetPython({42: 1, 56: 2, 78: -1})
+    changes = ZSetPython(int, {42: 1, 56: 2, 78: -1})
     z += changes
 
-    actual = list(z.iter(frozenset((42, 78))))
+    actual = list(z.iter(((42, 78))))
     assert actual == [(42, 1), (78, -1)]
 
     _flush(z)
     assert z.to_python() == changes
 
-    actual = list(z.iter(frozenset((42, 78))))
+    actual = list(z.iter(((42, 78))))
     assert actual == [(42, 1), (78, -1)]
 
 
@@ -67,7 +69,7 @@ def test_write_simple_int_with_index(sqlite_conn: generic.ConnSQLite) -> None:
     cur = sqlite_conn.cursor()
     z = sqlite.ZSetSQLite(cur, int, "foo", (Index.identity(int),))
     z.create_data_table()
-    changes = ZSetPython({42: 1, 56: 2})
+    changes = ZSetPython(int, {42: 1, 56: 2})
     z += changes
     _flush(z)
     assert z.to_python() == changes
@@ -82,7 +84,7 @@ def test_write_simple_date(sqlite_conn: generic.ConnSQLite) -> None:
     cur = sqlite_conn.cursor()
     z = sqlite.ZSetSQLite(cur, date, "foo", ())
     z.create_data_table()
-    changes = ZSetPython({date(2021, 1, 3): 1, date(2021, 1, 4): -2})
+    changes = ZSetPython(date, {date(2021, 1, 3): 1, date(2021, 1, 4): -2})
     z += changes
     _flush(z)
     assert z.to_python() == changes
@@ -97,7 +99,7 @@ def test_write_simple_date_with_index(sqlite_conn: generic.ConnSQLite) -> None:
         (Index.identity(date),),
     )
     z.create_data_table()
-    changes = ZSetPython({date(2021, 1, 3): 1, date(2021, 1, 4): -2})
+    changes = ZSetPython(date, {date(2021, 1, 3): 1, date(2021, 1, 4): -2})
     z += changes
     _flush(z)
     assert z.to_python() == changes
@@ -119,7 +121,7 @@ def test_write_complex(sqlite_conn: generic.ConnSQLite) -> None:
         age=38,
         created=datetime(2022, 1, 1, tzinfo=timezone.utc),
     )
-    changes = ZSetPython({animal: 2})
+    changes = ZSetPython(Animal, [(animal, 2)])
     z += changes
     _flush(z)
     assert z.to_python() == changes
@@ -143,28 +145,28 @@ def test_write_complex_update(sqlite_conn: generic.ConnSQLite) -> None:
         created=datetime(2022, 6, 1, tzinfo=timezone.utc),
     )
 
-    changes = ZSetPython({animal: 1})
+    changes = ZSetPython(Animal, [(animal, 1)])
     z += changes
     _flush(z)
     assert z.to_python() == changes
 
-    changes = ZSetPython({animal: -1, animal_new: 1})
+    changes = ZSetPython(Animal, [(animal, -1), (animal_new, 1)])
     z += changes
     _flush(z)
 
-    expected = ZSetPython({animal_new: 1})
+    expected = ZSetPython(Animal, [(animal_new, 1)])
     assert z.to_python() == expected
 
 
 class Bar(Data):
-    bingo: str
+    bingo: A[str, 1]
 
 
 class Foo(Data):
-    name: str | None
-    created: date
-    age: int
-    parent: Bar
+    name: A[str | None, 1]
+    created: A[date, 2]
+    age: A[int, 3]
+    parent: A[Bar, 4]
 
 
 def test_schema_made_and_used(sqlite_conn: generic.ConnSQLite) -> None:
@@ -188,21 +190,25 @@ def test_schema_made_and_used(sqlite_conn: generic.ConnSQLite) -> None:
         name="a-name", created=date(2023, 1, 4), age=23, parent=Bar(bingo="asd")
     )
     changes = ZSetPython(
-        {first_foo: 1}
-        | {
-            Foo(
-                name=f"some-name-{i % 3}",
-                created=date(2023, 1, 20),
-                age=i % 10,
-                parent=Bar(bingo=f"pi-{i}"),
-            ): 2
+        Foo,
+        [(first_foo, 1)]
+        + [
+            (
+                Foo(
+                    name=f"some-name-{i % 3}",
+                    created=date(2023, 1, 20),
+                    age=i % 10,
+                    parent=Bar(bingo=f"pi-{i}"),
+                ),
+                2,
+            )
             for i in range(33)
-        }
+        ],
     )
     z += changes
     _flush(z)
 
-    actual = list(z.iter(frozenset((first_foo,))))
+    actual = list(z.iter(((first_foo,))))
     assert actual == [(first_foo, 1)]
 
     sqlite_conn.commit()
@@ -300,7 +306,7 @@ def test_schema_made_and_used(sqlite_conn: generic.ConnSQLite) -> None:
     ]
 
 
-def _make_dt(day: int) -> datetime:
+def _make_dt(day: int) -> AwareUTCDatetime:
     return datetime(2022, 1, day, tzinfo=timezone.utc)
 
 
@@ -316,16 +322,17 @@ def _make_animal(age: int, day: int) -> Animal:
 def test_iter_is_sorted(sqlite_conn: generic.ConnSQLite) -> None:
     cur = sqlite_conn.cursor()
     index = Index.pick(Animal, lambda a: (a.age, a.created))
+    assert index.k == tuple[int, AwareUTCDatetime]
     z = sqlite.ZSetSQLite(cur, Animal, "foo", (index,))
     z.create_data_table()
 
-    z += ZSetPython({_make_animal(1, 1): 1})
-    z += ZSetPython({_make_animal(2, 2): 1})
-    z += ZSetPython({_make_animal(2, 1): 1})
+    z += ZSetPython(Animal, [(_make_animal(1, 1), 1)])
+    z += ZSetPython(Animal, [(_make_animal(2, 2), 1)])
+    z += ZSetPython(Animal, [(_make_animal(2, 1), 1)])
     _flush(z)
-    z += ZSetPython({_make_animal(3, 2): 1})
-    z += ZSetPython({_make_animal(1, 2): 1})
-    z += ZSetPython({_make_animal(3, 1): 1})
+    z += ZSetPython(Animal, [(_make_animal(3, 2), 1)])
+    z += ZSetPython(Animal, [(_make_animal(1, 2), 1)])
+    z += ZSetPython(Animal, [(_make_animal(3, 1), 1)])
 
     actual = list(z.iter_by_index(index))
     expected = [

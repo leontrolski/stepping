@@ -4,7 +4,8 @@ import random
 import time
 from datetime import date, datetime
 from pprint import pprint
-from typing import Any, Callable
+from typing import Annotated as A
+from typing import Any
 from unittest.mock import ANY
 from uuid import UUID
 
@@ -16,30 +17,32 @@ from tests.helpers import StoreMaker, store_ids, store_makers
 
 
 class User(st.Data):
-    user_id: int
-    name: str
+    user_id: A[int, 1]
+    name: A[str, 2]
 
 
 class Meter(st.Data):
-    meter_id: UUID
-    user_id: int
+    meter_id: A[UUID, 1]
+    user_id: A[int, 2]
 
 
 class HalfHourlyMeterRead(st.Data):
-    meter_id: UUID
-    timestamp: datetime
-    value: float
+    meter_id: A[UUID, 1]
+    timestamp: A[st.NaiveDatetime, 2]
+    value: A[float, 3]
 
 
 class UserMeter(User, Meter):
-    ...
+    user_id: A[int, 1]
+    name: A[str, 2]
+    meter_id: A[UUID, 3]
 
 
-def make_user_meter(p: st.Pair[User, Meter]) -> UserMeter:
+def make_user_meter(p: tuple[User, Meter]) -> UserMeter:
     return UserMeter(
-        user_id=p.left.user_id,
-        name=p.left.name,
-        meter_id=p.right.meter_id,
+        user_id=p[0].user_id,
+        name=p[0].name,
+        meter_id=p[1].meter_id,
     )
 
 
@@ -47,31 +50,31 @@ class UserMeterRead(User, Meter, HalfHourlyMeterRead):
     date: date
 
 
-def with_date(p: st.Pair[UserMeter, HalfHourlyMeterRead]) -> UserMeterRead:
+def with_date(p: tuple[UserMeter, HalfHourlyMeterRead]) -> UserMeterRead:
     return UserMeterRead(
-        user_id=p.left.user_id,
-        name=p.left.name,
-        meter_id=p.left.meter_id,
-        timestamp=p.right.timestamp,
-        value=p.right.value,
-        date=p.right.timestamp.date(),
+        user_id=p[0].user_id,
+        name=p[0].name,
+        meter_id=p[0].meter_id,
+        timestamp=p[1].timestamp,
+        value=p[1].value,
+        date=p[1].timestamp.date(),
     )
 
 
 class DailyUsage(st.Data):
-    user_id: int
-    meter_id: UUID
-    date: date
-    value: float
+    user_id: A[int, 1]
+    meter_id: A[UUID, 2]
+    date: A[date, 3]
+    value: A[float, 4]
 
 
-def to_daily(p: st.Pair[float, tuple[int, UUID, date]]) -> DailyUsage:
-    user_id, meter_id, date = p.right
+def to_daily(p: tuple[float, tuple[int, UUID, date]]) -> DailyUsage:
+    user_id, meter_id, date = p[1]
     return DailyUsage(
         user_id=user_id,
         meter_id=meter_id,
         date=date,
-        value=p.left,
+        value=p[0],
     )
 
 
@@ -268,9 +271,7 @@ def test_integrate(request: Any, conns: Conns, store_maker: StoreMaker) -> None:
     pr.dump_stats("test_integrate.prof")
 
     actual = list(
-        daily_cache.zset(store).iter_by_index(
-            index_daily, frozenset((date(2023, 1, 2),))
-        )
+        daily_cache.zset(store).iter_by_index(index_daily, (date(2023, 1, 2),))
     )
 
     # This was tested like this pre-pydantic
@@ -332,7 +333,7 @@ def test_parallel(request: Any, postgres_conn: st.ConnPostgres) -> None:
     if n == 1000:
         actual = list(
             daily_cache_parallel.zset(store).iter_by_index(
-                index_daily, frozenset((date(2023, 1, 2),))
+                index_daily, (date(2023, 1, 2),)
             )
         )
         usage = DailyUsage(

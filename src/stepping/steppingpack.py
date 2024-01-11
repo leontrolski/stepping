@@ -7,7 +7,9 @@ from datetime import date, datetime, timezone
 from enum import Enum
 from functools import cache
 from types import NoneType, UnionType
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING
+from typing import Annotated as A
+from typing import Any, ClassVar
 from typing import Literal as L
 from typing import (
     Protocol,

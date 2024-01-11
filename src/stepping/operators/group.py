@@ -1,77 +1,88 @@
 from dataclasses import replace
-from typing import Any
+from typing import Any, get_args
 
 from stepping import zset
 from stepping.graph import A1, Graph, OperatorKind, Path, VertexUnary
 from stepping.operators import builder, linear
-from stepping.types import Empty, Grouped, Index, K, Pair, Signature, T, ZSet
+from stepping.types import Empty, Grouped, Index, K, Signature, T, ZSet
 from stepping.zset import functions
 from stepping.zset.python import ZSetPython
 
 
 @builder.vertex(OperatorKind.group)
 def group(a: ZSet[T], *, by: Index[T, K]) -> Grouped[ZSet[T], K]:
-    out = Grouped[ZSet[T], K]()
+    out = Grouped[ZSet[T], K](by.t, by.k)
     for value, count in a.iter():
         key = by.f(value)
         group_value = out.get(key)
         if isinstance(group_value, Empty):
-            out.set(key, ZSetPython({value: count}))
+            out.set(key, ZSetPython(a.t, [(value, count)]))
         else:
-            out.set(key, group_value + ZSetPython({value: count}))
+            out.set(key, group_value + ZSetPython(a.t, [(value, count)]))
     return out
 
 
 @builder.vertex(OperatorKind.flatten)
-def flatten(a: Grouped[ZSet[T], K]) -> ZSet[Pair[T, K]]:
-    return ZSetPython[Pair[T, K]](
-        (Pair(v, key), count) for z, key in a.iter() for v, count in z.iter()
+def flatten(a: Grouped[ZSet[T], K]) -> ZSet[tuple[T, K]]:
+    t = get_args(a.t)[0]
+    return ZSetPython[tuple[T, K]](
+        tuple[t, a.k],
+        (((v, key), count) for z, key in a.iter() for v, count in z.iter()),
     )
 
 
 @builder.vertex(OperatorKind.make_indexed_pairs)
 def make_indexed_pairs(
-    a: Grouped[ZSet[T], K], *, index: Index[Pair[T, K], K]
-) -> ZSet[Pair[T, K]]:
-    out = ZSetPython[Pair[T, K]](indexes=(index,))
-    return out + ZSetPython[Pair[T, K]](
-        (Pair(value, key), count)
-        for inner, key in a.iter()
-        for value, count in inner.iter()
+    a: Grouped[ZSet[T], K], *, index: Index[tuple[T, K], K]
+) -> ZSet[tuple[T, K]]:
+    out = ZSetPython[tuple[T, K]](index.t, indexes=(index,))
+    return out + ZSetPython[tuple[T, K]](
+        index.t,
+        (
+            ((value, key), count)
+            for inner, key in a.iter()
+            for value, count in inner.iter()
+        ),
     )
 
 
 @builder.vertex(OperatorKind.make_grouped)
 def make_grouped(
-    a: ZSet[Pair[T, K]], *, index: Index[Pair[T, K], K]
+    a: ZSet[tuple[T, K]], *, index: Index[tuple[T, K], K]
 ) -> Grouped[ZSet[T], K]:
-    out = Grouped[ZSet[T], K]()
+    out = Grouped[ZSet[T], K](get_args(index.t)[0], index.k)
     for key, inner in functions.iter_by_index_grouped(a, index):
-        out.set(key, ZSetPython[T]((value.left, count) for value, count in inner))
+        out.set(
+            key,
+            ZSetPython[T](
+                get_args(a.t)[0],
+                ((value[0], count) for value, count in inner),
+            ),
+        )
     return out
 
 
 @builder.vertex(OperatorKind.get_keys)
-def get_keys(a: Grouped[Any, K]) -> frozenset[K]:
-    keys = frozenset(key for _, key in a.iter())
+def get_keys(a: Grouped[Any, K]) -> tuple[K, ...]:
+    keys = tuple(key for _, key in a.iter())
     return keys
 
 
 @builder.vertex(OperatorKind.pick_relevant)
 def pick_relevant(
-    keys: frozenset[K], a: ZSet[Pair[T, K]], *, index: Index[Pair[T, K], K]
-) -> ZSet[Pair[T, K]]:
-    out = ZSetPython[Pair[T, K]](indexes=(index,))
+    keys: tuple[K, ...], a: ZSet[tuple[T, K]], *, index: Index[tuple[T, K], K]
+) -> ZSet[tuple[T, K]]:
+    out = ZSetPython[tuple[T, K]](a.t, indexes=(index,))
     out += ZSetPython(
-        (value, count) for _, value, count in a.iter_by_index(index, keys)
+        a.t, ((value, count) for _, value, count in a.iter_by_index(index, keys))
     )
     return out
 
 
 def _wrap_delay(
-    a: Grouped[ZSet[T], K], *, index: Index[Pair[T, K], K]
+    a: Grouped[ZSet[T], K], *, index: Index[tuple[T, K], K]
 ) -> Grouped[ZSet[T], K]:
-    added: ZSet[Pair[T, K]]
+    added: ZSet[tuple[T, K]]
 
     indexed_pairs = make_indexed_pairs(a, index=index)
     new_delay = linear.delay_indexed(added, indexes=(index,))
@@ -90,8 +101,8 @@ def wrap_delay(
     first_vertex: VertexUnary[Any, Grouped[Any, K]],
 ) -> Graph[A1[Grouped[ZSet[T], K]], Grouped[ZSet[T], K]]:
     index = Index.pick(
-        Pair[t, k],  # type: ignore[valid-type]
-        lambda p: p.right,
+        tuple[t, k],  # type: ignore[valid-type]
+        lambda p: p[1],
     )
     graph = builder.compile_generic(
         _wrap_delay,

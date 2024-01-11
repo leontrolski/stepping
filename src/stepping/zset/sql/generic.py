@@ -1,27 +1,30 @@
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from functools import cache
-from typing import Any, Callable, Iterator, Self, get_args
+from types import NoneType, UnionType
+from typing import Any, Callable, Iterator, Self, Union, get_args, get_origin
 
+import ormsgpack
 import psycopg
+import steppingpack
 
-from stepping import steppingpack
 from stepping.types import (
+    IDENTITYLESS,
     MATCH_ALL,
     Index,
     Indexable,
     IndexableAtom,
     K,
     MatchAll,
-    Time,
     TSerializable,
+    ValueJSON,
     ZSet,
     ZSetBodge,
-    is_type,
 )
 from stepping.zset.python import ZSetPython
 
@@ -56,15 +59,15 @@ class ZSetSQL(ZSetBodge[TSerializable]):
         return self.to_python() == other
 
     def to_python(self) -> ZSetPython[TSerializable]:
-        return ZSetPython(self.iter())
+        return ZSetPython(self.t, self.iter())
 
     @property
     def identity_is_data(self) -> bool:
-        return self.t in steppingpack.IDENTITYLESS
+        return self.t in IDENTITYLESS
 
     def consolidate_changes(self) -> ZSetPython[TSerializable]:
         if not self.changes:
-            return ZSetPython[TSerializable]()
+            return ZSetPython[TSerializable](self.t)
         changes, *rest = self.changes
         for other in rest:
             changes += other
@@ -91,13 +94,13 @@ class ZSetSQL(ZSetBodge[TSerializable]):
         return replace(self, is_negative=not self.is_negative)
 
     def __add__(self, other: ZSet[TSerializable]) -> Self:
-        other_python = ZSetPython[TSerializable]() + other
+        other_python = ZSetPython[TSerializable](self.t) + other
         other_python = (-other_python) if self.is_negative else other_python
         changes = self.changes + (other_python,)
         return replace(self, changes=changes)
 
     def iter(
-        self, match: frozenset[TSerializable] | MatchAll = MATCH_ALL
+        self, match: tuple[TSerializable, ...] | MatchAll = MATCH_ALL
     ) -> Iterator[tuple[TSerializable, int]]:
         if not isinstance(match, MatchAll) and not match:
             return
@@ -121,7 +124,7 @@ class ZSetSQL(ZSetBodge[TSerializable]):
     def _iter_by_index(
         self,
         index: Index[TSerializable, K],
-        match_keys: frozenset[K] | MatchAll = MATCH_ALL,
+        match_keys: tuple[K, ...] | MatchAll = MATCH_ALL,
     ) -> Iterator[tuple[K, TSerializable, int]]:
         if index not in self.indexes:
             raise RuntimeError(f"ZSet does not have index: {index}")
@@ -145,12 +148,12 @@ class ZSetSQL(ZSetBodge[TSerializable]):
         raise NotImplementedError("ZSetSQL must be subclassed")
 
     def get_by_key(
-        self, index: Index[TSerializable, K], match_keys: frozenset[K] | MatchAll
+        self, index: Index[TSerializable, K], match_keys: tuple[K, ...] | MatchAll
     ) -> Iterator[tuple[K, TSerializable, int]]:
         raise NotImplementedError("ZSetSQL must be subclassed")
 
     def get_all(
-        self, match: frozenset[TSerializable] | MatchAll = MATCH_ALL
+        self, match: tuple[TSerializable, ...] | MatchAll = MATCH_ALL
     ) -> Iterator[tuple[TSerializable, int]]:
         raise NotImplementedError("ZSetSQL must be subclassed")
 
@@ -232,10 +235,26 @@ def interleave_changes(
             b = next(b_iterator, None)
 
 
-def dump_key(
-    index: Index[Any, Any], key: Indexable
-) -> tuple[steppingpack.ValueJSON, ...]:
+def dump_key(index: Index[Any, Any], key: Indexable) -> tuple[ValueJSON, ...]:
     if index.is_composite:
-        return tuple(steppingpack.dump_indexable(k) for k in key)  # type: ignore
+        return tuple(dump_indexable(k) for k in key)  # type: ignore
     else:
-        return (steppingpack.dump_indexable(key),)
+        return (dump_indexable(key),)
+
+
+def dump_indexable(o: Indexable) -> ValueJSON:
+    # Cheeky way of quickly dumping datetimes, enums etc.
+    dumped_bytes = steppingpack.dump(o)
+    dumped_json: ValueJSON = ormsgpack.unpackb(dumped_bytes)
+    return dumped_json
+
+
+def load_indexable(t: type[Indexable], o: ValueJSON) -> Indexable:
+    return steppingpack.load(t, ormsgpack.packb(o))
+
+
+def make_identity(o: steppingpack.Value | tuple[steppingpack.Value, ...]) -> bytes:
+    assert not isinstance(o, IDENTITYLESS)
+    md5 = hashlib.md5()
+    md5.update(steppingpack.dump(o))
+    return md5.digest()

@@ -5,6 +5,7 @@ from textwrap import dedent
 import time
 from typing import Any
 import concurrent.futures
+from typing import Annotated
 
 import stepping as st
 
@@ -14,55 +15,56 @@ SQLITE_PATH_LOADS = pathlib.Path(__file__).parent / "stepping-docs-test-typechec
 
 # reference: class-class
 class Class(st.Data):
-    identifier: str  # eg: "one.A"
-    attrs: tuple[tuple[str, str], ...]
+    identifier: Annotated[str, 1]  # eg: "one.A"
+    attrs: Annotated[st.List[tuple[str, str]], 2]
 
 
 # /reference: class-class
 
 
 class Attr(st.Data):
-    identifier: str  # eg: "one.A"
-    key: str  # eg: "x"
-    value: str  # eg: "int" or "one.A"
+    identifier: Annotated[str, 1]  # eg: "one.A"
+    key: Annotated[str, 2]  # eg: "x"
+    value: Annotated[str, 3]  # eg: "int" or "one.A"
 
 
 class A(st.Data):
-    key: str
-    value: "str | tuple[A, ...]"
+    key: Annotated[str, 1]
+    value: Annotated["str | tuple[A, ...]", 2]
 
 
 class Resolved(st.Data):
-    identifier: str  # eg: "one.A"
-    attrs: tuple[A, ...]
+    identifier: Annotated[str, 1]  # eg: "one.A"
+    attrs: Annotated[tuple[A, ...], 2]
 
 
+# REVISIT
 def to_many_attrs(c: Class) -> frozenset[Attr]:
     return frozenset(
         Attr(identifier=c.identifier, key=key, value=value) for key, value in c.attrs
     )
 
 
-def to_edge(a: Attr) -> st.Pair[str, str]:
-    return st.Pair(a.identifier, a.value)
+def to_edge(a: Attr) -> tuple[str, str]:
+    return (a.identifier, a.value)
 
 
 def zset_zero() -> st.ZSetPython[Class]:
     return st.ZSetPython[Class]()
 
 
-def pick_zset(p: st.Pair[st.Pair[str, str], Class]) -> st.ZSetPython[Class]:
-    return st.ZSetPython[Class]({p.right: 1})
+def pick_zset(p: tuple[tuple[str, str], Class]) -> st.ZSetPython[Class]:
+    return st.ZSetPython[Class]({p[1]: 1})
 
 
 def resolve(
-    p: st.Pair[Class, st.Pair[st.ZSetPython[Class], str] | st.Empty]
+    p: tuple[Class, tuple[st.ZSetPython[Class], str] | st.Empty]
 ) -> Resolved:
-    from_class = p.left
+    from_class = p[0]
     identifier_to_attrs = {
         to_class.identifier: to_class.attrs
         for to_class, _ in (
-            [] if isinstance(p.right, st.Empty) else p.right.left.iter()
+            [] if isinstance(p[1], st.Empty) else p[1][0].iter()
         )
     }
 
@@ -90,12 +92,12 @@ def link_attrs(classes: st.ZSet[Class]) -> st.ZSet[Resolved]:
     from_to = st.join(
         all_edges,
         classes,
-        on_left=st.Index.pick(st.Pair[str, str], lambda p: p.right),
+        on_left=st.Index.pick(tuple[str, str], lambda p: p[1]),
         on_right=st.Index.pick(Class, lambda a: a.identifier),
     )
     grouped_by_from_identifier = st.group_reduce_flatten(
         from_to,
-        by=st.Index.pick(st.Pair[st.Pair[str, str], Class], lambda p: p.left.left),
+        by=st.Index.pick(tuple[tuple[str, str], Class], lambda p: p[0][0]),
         zero=zset_zero,
         pick_value=pick_zset,
     )
@@ -103,7 +105,7 @@ def link_attrs(classes: st.ZSet[Class]) -> st.ZSet[Resolved]:
         classes,
         grouped_by_from_identifier,
         on_left=st.Index.pick(Class, lambda a: a.identifier),
-        on_right=st.Index.pick(st.Pair[st.ZSetPython[Class], str], lambda p: p.right),
+        on_right=st.Index.pick(tuple[st.ZSetPython[Class], str], lambda p: p[1]),
     )
     resolved = st.map(from_joined_to_relevant, f=resolve)
     _ = output_cache[resolved](lambda r: st.integrate(r))
@@ -116,11 +118,11 @@ def link_attrs(classes: st.ZSet[Class]) -> st.ZSet[Resolved]:
 graph = st.compile_lazy(link_attrs)
 
 # attrs: st.ZSet[Attr]
-# edges: st.ZSet[st.Pair[str, str]]
-# all_edges: st.ZSet[st.Pair[str, str]]
-# from_to: st.ZSet[st.Pair[st.Pair[str, str], Class]]
-# grouped_by_from_identifier: st.ZSet[st.Pair[st.ZSetPython[Class], str]]
-# from_joined_to_relevant: st.ZSet[st.Pair[Class, st.Pair[st.ZSetPython[Class], str] | st.Empty]]
+# edges: st.ZSet[tuple[str, str]]
+# all_edges: st.ZSet[tuple[str, str]]
+# from_to: st.ZSet[tuple[tuple[str, str], Class]]
+# grouped_by_from_identifier: st.ZSet[tuple[st.ZSetPython[Class], str]]
+# from_joined_to_relevant: st.ZSet[tuple[Class, tuple[st.ZSetPython[Class], str] | st.Empty]]
 # resolved: st.ZSet[Resolved]
 
 

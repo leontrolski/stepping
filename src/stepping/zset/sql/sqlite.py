@@ -7,7 +7,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Iterator
 
-from stepping import steppingpack
+import steppingpack
+
 from stepping.types import (
     MATCH_ALL,
     Index,
@@ -17,6 +18,7 @@ from stepping.types import (
     TSerializable,
     ZSet,
     batched,
+    ValueJSON,
 )
 from stepping.zset.sql import generic
 
@@ -41,12 +43,12 @@ class ZSetSQLite(generic.ZSetSQL[TSerializable]):
         return _upsert(self, self.consolidate_changes())
 
     def get_by_key(
-        self, index: Index[TSerializable, K], match_keys: frozenset[K] | MatchAll
+        self, index: Index[TSerializable, K], match_keys: tuple[K, ...] | MatchAll
     ) -> Iterator[tuple[K, TSerializable, int]]:
         return _get_by_key(self, index, match_keys)
 
     def get_all(
-        self, match: frozenset[TSerializable] | MatchAll = MATCH_ALL
+        self, match: tuple[TSerializable, ...] | MatchAll = MATCH_ALL
     ) -> Iterator[tuple[TSerializable, int]]:
         return _get_all(self, match)
 
@@ -112,7 +114,7 @@ def _upsert(z_sql: ZSetSQLite[TSerializable], z: ZSet[TSerializable]) -> None:
     for v, count in z.iter():
         value = tuple[Any, ...]()
         if not z_sql.identity_is_data:
-            value += (steppingpack.make_identity(v),)
+            value += (generic.make_identity(v),)
         value += (steppingpack.dump(v),)
         for index in z_sql.indexes:
             value += generic.dump_key(index, index.f(v))
@@ -142,7 +144,7 @@ def _upsert(z_sql: ZSetSQLite[TSerializable], z: ZSet[TSerializable]) -> None:
 
 def _get_all(
     z_sql: ZSetSQLite[TSerializable],
-    match: frozenset[TSerializable] | MatchAll = MATCH_ALL,
+    match: tuple[TSerializable, ...] | MatchAll = MATCH_ALL,
 ) -> Iterator[tuple[TSerializable, int]]:
     table_name = z_sql.table_name
     data_column = "identity" if z_sql.identity_is_data else "data"
@@ -151,7 +153,7 @@ def _get_all(
         if z_sql.identity_is_data:
             hex_strings = (steppingpack.dump(m).hex() for m in match)
         else:
-            hex_strings = (steppingpack.make_identity(m).hex() for m in match)
+            hex_strings = (generic.make_identity(m).hex() for m in match)
         identity_literals = ", ".join(f"x'{h}'" for h in hex_strings)
         qry = f"SELECT {data_column}, c FROM {table_name} WHERE identity IN ({identity_literals})"
         for data, c in z_sql.cur.execute(qry):
@@ -165,7 +167,7 @@ def _get_all(
 def _get_by_key(
     z_sql: ZSetSQLite[TSerializable],
     index: Index[TSerializable, K],
-    match_keys: frozenset[K] | MatchAll,
+    match_keys: tuple[K, ...] | MatchAll,
 ) -> Iterator[tuple[K, TSerializable, int]]:
     table_name = z_sql.table_name
 
@@ -178,7 +180,7 @@ def _get_by_key(
     if not isinstance(match_keys, MatchAll):
         select_expression = ", ".join(to_each_value(index))
         on_expression = " AND ".join(f"{e} = __{i}" for i, e in enumerate(info.columns))
-        join_on = list[steppingpack.ValueJSON]()
+        join_on = list[ValueJSON]()
         for key in match_keys:
             join_on.append(list(generic.dump_key(index, key)))
         join_expression = (
@@ -200,7 +202,7 @@ def _get_by_key(
         if not index.is_composite:
             key_data = key_data[0]
         yield (
-            steppingpack.load(index.k, key_data),
+            generic.load_indexable(index.k, key_data),
             steppingpack.load(z_sql.t, data),
             count,
         )

@@ -20,7 +20,8 @@ class StorePython:
     def from_graph(cls, graph: Graph[Any, Any]) -> StorePython:
         store = StorePython({}, {})
         for vertex in graph.delay_vertices:
-            z = ZSetPython[Any](indexes=vertex.indexes)
+            (t,) = get_args(vertex.t)
+            z = ZSetPython[Any](t, indexes=vertex.indexes)
             store._current[vertex] = z
         return store
 

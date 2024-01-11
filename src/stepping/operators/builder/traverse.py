@@ -109,13 +109,13 @@ def _reduce_union(t: type) -> type:
     Given:
 
         Union[
-            ZSet[Pair[Class, Pair[str, ZSetPython[Class]]]],
-            ZSet[Pair[Class, Empty]],
+            ZSet[tuple[Class, tuple[str, ZSetPython[Class]]]],
+            ZSet[tuple[Class, Empty]],
         ]
 
     Return:
 
-        ZSet[Pair[Class, Pair[str, ZSetPython[Class]] | Empty]]
+        ZSet[tuple[Class, tuple[str, ZSetPython[Class]] | Empty]]
 
     """
     if _get_origin(t) is not Union:  # type: ignore[comparison-overlap]

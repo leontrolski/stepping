@@ -1,73 +1,82 @@
 from textwrap import dedent
 from datetime import date, datetime
 from typing import Any
+from typing import Annotated as A
 from uuid import UUID
 
 import stepping as st
 
 
 class User(st.Data):
-    user_id: int
-    name: str
+    user_id: A[int, 1]
+    name: A[str, 2]
 
 
 class Meter(st.Data):
-    meter_id: UUID
-    user_id: int
+    meter_id: A[UUID, 1]
+    user_id: A[int, 2]
 
 
 class HalfHourlyMeterRead(st.Data):
-    meter_id: UUID
-    timestamp: datetime
-    value: float
+    meter_id: A[UUID, 1]
+    timestamp: A[datetime, 2]
+    value: A[float, 3]
 
 
-class UserMeter(User, Meter):
-    ...
+class UserMeter(st.Data):
+    user_id: A[int, 1]
+    name: A[str, 2]
+    meter_id: A[UUID, 3]
 
 
-class UserMeterRead(User, Meter, HalfHourlyMeterRead):
-    date: date
+class UserMeterRead(st.Data):
+    user_id: A[int, 1]
+    name: A[str, 2]
+    meter_id: A[UUID, 3]
+    timestamp: A[datetime, 4]
+    value: A[float, 5]
+    date: A[date, 6]
 
 
 class DailyUsage(st.Data):
-    user_id: int
-    meter_id: UUID
-    date: date
-    value: float
+    user_id: A[int, 1]
+    meter_id: A[UUID, 2]
+    date: A[date, 3]
+    value: A[float, 4]
 
 
-def make_user_meter(p: st.Pair[User, Meter]) -> UserMeter:
+def make_user_meter(p: tuple[User, Meter]) -> UserMeter:
     return UserMeter(
-        user_id=p.left.user_id,
-        name=p.left.name,
-        meter_id=p.right.meter_id,
+        user_id=p[0].user_id,
+        name=p[0].name,
+        meter_id=p[1].meter_id,
     )
 
 
-def with_date(p: st.Pair[UserMeter, HalfHourlyMeterRead]) -> UserMeterRead:
+def with_date(p: tuple[UserMeter, HalfHourlyMeterRead]) -> UserMeterRead:
     return UserMeterRead(
-        user_id=p.left.user_id,
-        name=p.left.name,
-        meter_id=p.left.meter_id,
-        timestamp=p.right.timestamp,
-        value=p.right.value,
-        date=p.right.timestamp.date(),
+        user_id=p[0].user_id,
+        name=p[0].name,
+        meter_id=p[0].meter_id,
+        timestamp=p[1].timestamp,
+        value=p[1].value,
+        date=p[1].timestamp.date(),
     )
 
 
-def to_daily(p: st.Pair[float, tuple[int, UUID, date]]) -> DailyUsage:
-    user_id, meter_id, date = p.right
+def to_daily(p: tuple[float, tuple[int, UUID, date]]) -> DailyUsage:
+    user_id, meter_id, date = p[1]
     return DailyUsage(
         user_id=user_id,
         meter_id=meter_id,
         date=date,
-        value=p.left,
+        value=p[0],
     )
 
 
 def pick_value(u: UserMeterRead) -> float:
     return u.value
+
 
 # reference: query
 index_daily = st.Index.pick(DailyUsage, lambda d: d.date)
@@ -97,13 +106,15 @@ def query(
         merged,
         by=st.Index.pick(UserMeterRead, lambda f: (f.user_id, f.meter_id, f.date)),
         zero=float,
-        pick_value=pick_value
+        pick_value=pick_value,
     )
     as_daily = st.map(grouped, f=to_daily)
 
     _ = daily_cache[as_daily](lambda a: st.integrate_indexed(a, indexes=(index_daily,)))
 
     return as_daily
+
+
 # /reference: query
 
 # reference: data
@@ -145,7 +156,7 @@ def test_profile_1(postgres_conn: st.ConnPostgres) -> None:
 
     actual = list(
         daily_cache.zset(store).iter_by_index(
-            index_daily, frozenset((date(2023, 1, 2), date(2023, 1, 3)))
+            index_daily, ((date(2023, 1, 2), date(2023, 1, 3)))
         )
     )
     expected = [
@@ -177,7 +188,7 @@ def test_profile_1(postgres_conn: st.ConnPostgres) -> None:
     i_reads.remove(half_hourly_reads_1[2])  # remove a read from 2023-01-02
     actual = list(
         daily_cache.zset(store).iter_by_index(
-            index_daily, frozenset((date(2023, 1, 2), date(2023, 1, 3)))
+            index_daily, ((date(2023, 1, 2), date(2023, 1, 3)))
         )
     )
     expected = [

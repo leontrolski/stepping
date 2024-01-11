@@ -51,13 +51,13 @@ def test_raw_sql_2(postgres_conn: st.ConnPostgres) -> None:
     ]
 
 
-Row = st.Pair[int, int]
-on_left = st.Index.pick(Row, lambda row: row.right)
-on_right = st.Index.pick(Row, lambda row: row.left)
+Row = tuple[int, int]
+on_left = st.Index.pick(Row, lambda row: row[1])
+on_right = st.Index.pick(Row, lambda row: row[0])
 
 
-def _tc_map(p: st.Pair[Row, Row]) -> Row:
-    return Row(p.left.left, p.right.right)
+def _tc_map(p: tuple[Row, Row]) -> Row:
+    return (p[0][0], p[1][1])
 
 
 def _f_test_python_implementation(z: st.ZSet[Row]) -> st.ZSet[Row]:
@@ -74,11 +74,11 @@ def test_python_implementation(request: Any) -> None:
 
     store = st.StorePython.from_graph(g)
 
-    zset = st.ZSetPython({Row(h, t): 1 for h, t in values})
+    zset = st.ZSetPython(Row, {(h, t): 1 for h, t in values})
     (actual_z,) = st.iteration(store, g, (zset,))
     (actual_z,) = st.iteration(store, g, (zset,))
     (actual_z,) = st.iteration(store, g, (zset,))
-    actual = sorted((row.left, row.right) for row, _ in actual_z.iter())
+    actual = sorted((row[0], row[1]) for row, _ in actual_z.iter())
     assert actual == [
         (0, 1),
         (0, 2),
@@ -106,13 +106,13 @@ def test_recurse(request: Any, conns: Conns, store_maker: StoreMaker) -> None:
         st.write_png(graph, "graphs/test_recurse.png", level=6)
 
     # do in two passes
-    zset = st.ZSetPython({Row(h, t): 1 for h, t in values[:3]})
+    zset = st.ZSetPython(Row, {(h, t): 1 for h, t in values[:3]})
     st.iteration(store, graph, (zset,))
-    zset = st.ZSetPython({Row(h, t): 1 for h, t in values[3:]})
+    zset = st.ZSetPython(Row, {(h, t): 1 for h, t in values[3:]})
     st.iteration(store, graph, (zset,))
     # and again!
     (actual_z,) = st.iteration(store, graph, (zset,))
-    actual = sorted((row.left, row.right) for row, _ in actual_z.iter())
+    actual = sorted((row[0], row[1]) for row, _ in actual_z.iter())
     assert actual == [
         (0, 1),
         (0, 2),
@@ -125,9 +125,9 @@ def test_recurse(request: Any, conns: Conns, store_maker: StoreMaker) -> None:
         (2, 3),
     ]
 
-    zset = st.ZSetPython({Row(1, 2): -1})
+    zset = st.ZSetPython(Row, {(1, 2): -1})
     (actual_z,) = st.iteration(store, graph, (zset,))
-    actual = sorted((row.left, row.right) for row, _ in actual_z.iter())
+    actual = sorted((row[0], row[1]) for row, _ in actual_z.iter())
     assert actual == [
         (0, 1),
         (0, 4),
@@ -141,9 +141,9 @@ def test_single_pass(request: Any) -> None:
     graph = st.compile(_f_test_recurse)
     store = st.StorePython.from_graph(graph)
 
-    zset = st.ZSetPython({Row(h, t): 1 for h, t in values[:3]})
+    zset = st.ZSetPython(Row, {(h, t): 1 for h, t in values[:3]})
     (actual_z,) = st.iteration(store, graph, (zset,))
-    actual = sorted((row.left, row.right) for row, _ in actual_z.iter())
+    actual = sorted((row[0], row[1]) for row, _ in actual_z.iter())
     assert actual == [
         (0, 1),
         (0, 2),

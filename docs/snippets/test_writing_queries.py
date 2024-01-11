@@ -1,27 +1,28 @@
 import pathlib
 from textwrap import dedent
+from typing import Annotated as A
 
 # reference: setup
 import stepping as st
 
 
 class Product(st.Data):
-    name: str
-    price: float
+    name: A[str, 1]
+    price: A[float, 2]
 
 
 class LineItem(st.Data):
-    basket_id: int
-    product_name: str
-    qty: int
+    basket_id: A[int, 1]
+    product_name: A[str, 2]
+    qty: A[int, 3]
 
 
-def pick_price(p: st.Pair[Product, LineItem]) -> float:
-    return p.left.price * p.right.qty
+def pick_price(p: tuple[Product, LineItem]) -> float:
+    return p[0].price * p[1].qty
 
 
-def to_receipt_item(p: st.Pair[float, int]) -> str:
-    return f"Basket id: {p.right} total: ${p.left}"
+def to_receipt_item(p: tuple[float, int]) -> str:
+    return f"Basket id: {p[1]} total: ${p[0]}"
 
 
 # /reference: setup
@@ -34,7 +35,7 @@ cache = st.Cache[str]()
 def query(
     products: st.ZSet[Product],
     line_items: st.ZSet[LineItem],
-) -> st.ZSet[st.Pair[Product, LineItem]]:
+) -> st.ZSet[tuple[Product, LineItem]]:
     joined = st.join(
         products,
         line_items,
@@ -43,7 +44,7 @@ def query(
     )
     grouped = st.group_reduce_flatten(
         joined,
-        by=st.Index.pick(st.Pair[Product, LineItem], lambda p: p.right.basket_id),
+        by=st.Index.pick(tuple[Product, LineItem], lambda p: p[1].basket_id),
         zero=float,
         pick_value=pick_price,
     )
@@ -120,10 +121,10 @@ def test_sum_python() -> None:
     foo = cache.zset(store)
     bar = product_action.insert
     # reveal_locals()
-    # product_action.insert: (inputs: list[Product]) -> tuple[st.ZSet[st.Pair[Product, LineItem]]]
+    # product_action.insert: (inputs: list[Product]) -> tuple[st.ZSet[tuple[Product, LineItem]]]
     # expected: str
     # foo: st.ZSet[str]
-    # graph: st.Graph[st.A2[st.ZSet[Product], st.ZSet[LineItem]], st.A1[st.ZSet[st.Pair[Product, LineItem]]]]
-    # line_item_action: stepping.run.Action[LineItem, tuple[st.ZSet[st.Pair[Product, LineItem]]]]
-    # product_action: stepping.run.Action[Product, tuple[st.ZSet[st.Pair[Product, LineItem]]]]
+    # graph: st.Graph[st.A2[st.ZSet[Product], st.ZSet[LineItem]], st.A1[st.ZSet[tuple[Product, LineItem]]]]
+    # line_item_action: stepping.run.Action[LineItem, tuple[st.ZSet[tuple[Product, LineItem]]]]
+    # product_action: stepping.run.Action[Product, tuple[st.ZSet[tuple[Product, LineItem]]]]
     # store: stepping.store.StorePython

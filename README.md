@@ -37,14 +37,17 @@ mypy src tests
 
 ## Vague Ox plan
 
-- Fork `ormsgpack` - work out how versioning gubbins works.
-- Make dump extra quick - see https://github.com/gukoff/dtparse.
-- Make rust btree wrapper that implements:
+- `mypy src/stepping/zset/functions.py src/stepping/zset/python.py tests/test_zset.py src/stepping/types.py tests/run/test_basic.py src/stepping/zset/sql/generic.py src/stepping/store.py tests/test_postgres.py tests/test_sqlite.py`
+- `pytest pytest tests/test_zset.py tests/test_builder.py tests/test_datatypes.py tests/test_transform.py tests/test_types.py tests/test_postgres.py tests/run/test_basic.py tests/test_postgres.py tests/test_sqlite.py`
+- A[date] Naive
+- Add __hash__ to other types
+- `# REVISIT`
+- Query for inits: `ZSetPython(?:\[.+?\])?\(`
+- Speed up `__mul__`
+- Is `._data` public now?
+- Remove ZSet dict constructor.
+- Revisit inheritance for `UserMeter` etc.
 
-```
-OrderedMap[tuple[bytes | int | float, ...], bytes]
-ascending: tuple[bool, ...]
-```
 
 # Uploading to Pypi
 

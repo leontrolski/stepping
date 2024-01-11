@@ -54,7 +54,7 @@ class SortedSet(Generic[TSerializable, K]):
                 yield n
 
     def iter_matching(
-        self, match_keys: frozenset[K] | MatchAll
+        self, match_keys: tuple[K, ...] | MatchAll
     ) -> Iterator[TSerializable]:
         if isinstance(match_keys, MatchAll):
             yield from self

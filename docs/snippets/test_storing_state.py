@@ -1,26 +1,27 @@
 import pathlib
 from textwrap import dedent
+from typing import Annotated as A
 
 import stepping as st
 
 
 class Product(st.Data):
-    name: str
-    price: float
+    name: A[str, 1]
+    price: A[float, 2]
 
 
 class LineItem(st.Data):
-    basket_id: int
-    product_name: str
-    qty: int
+    basket_id: A[int, 1]
+    product_name: A[str, 3]
+    qty: A[int, 4]
 
 
-def pick_price(p: st.Pair[Product, LineItem]) -> float:
-    return p.left.price * p.right.qty
+def pick_price(p: tuple[Product, LineItem]) -> float:
+    return p[0].price * p[1].qty
 
 
-def to_receipt_item(p: st.Pair[float, int]) -> str:
-    return f"Basket id: {p.right} total: ${p.left}"
+def to_receipt_item(p: tuple[float, int]) -> str:
+    return f"Basket id: {p[1]} total: ${p[0]}"
 
 
 cache = st.Cache[str]()
@@ -30,7 +31,7 @@ cache = st.Cache[str]()
 def query(
     products: st.ZSet[Product],
     line_items: st.ZSet[LineItem],
-) -> st.ZSet[st.Pair[Product, LineItem]]:
+) -> st.ZSet[tuple[Product, LineItem]]:
     joined = st.join(
         products,
         line_items,
@@ -39,7 +40,7 @@ def query(
     )
     grouped = st.group_reduce_flatten(
         joined,
-        by=st.Index.pick(st.Pair[Product, LineItem], lambda p: p.right.basket_id),
+        by=st.Index.pick(tuple[Product, LineItem], lambda p: p[1].basket_id),
         zero=float,
         pick_value=pick_price,
     )

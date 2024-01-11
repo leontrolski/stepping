@@ -1,5 +1,7 @@
 from typing import Any, Callable
 
+import pytest
+
 import stepping as st
 import stepping.store
 from stepping import run
@@ -75,7 +77,7 @@ def test_crazy_group_transform(request: Any) -> None:
     integrate = builder.compile_generic(
         st.integrate,
         {},
-        Signature([("a", str)], {}, str),
+        Signature([("a", int)], {}, int),
         Path(),
     )
     g = lift_grouped(str, integrate)
@@ -84,7 +86,7 @@ def test_crazy_group_transform(request: Any) -> None:
         write_png(g, "graphs/test_crazy_group_transform.png", simplify_labels=False)
 
     def group(d: dict[str, int]) -> Grouped[int, str]:
-        out = Grouped[int, str]()
+        out = Grouped[int, str](int, str)
         for k, v in d.items():
             out.set(k, v)
         return out
@@ -100,6 +102,8 @@ def test_crazy_group_transform(request: Any) -> None:
     assert out == group({"k2": 6})
 
 
+# REVISIT
+# @pytest.mark.xfail
 def test_transform_grouped_reduce(request: Any) -> None:
     reduce2 = builder.compile_generic(
         st.reduce,
@@ -116,9 +120,9 @@ def test_transform_grouped_reduce(request: Any) -> None:
         write_png(g, "graphs/test_transform_grouped_reduce.png")
 
     def group(d: dict[str, dict[int, int]]) -> Grouped[ZSet[int], str]:
-        out = Grouped[ZSet[int], str]()
+        out = Grouped[ZSet[int], str](ZSet[int], str)
         for k, v in d.items():
-            out.set(k, ZSetPython(v))
+            out.set(k, ZSetPython(int, v))
         return out
 
     store = stepping.store.StorePython.from_graph(g)

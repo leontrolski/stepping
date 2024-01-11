@@ -4,7 +4,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from functools import cache
 from itertools import islice
-from types import NoneType
+from types import UnionType
+from typing import Annotated as A
 from typing import (
     Any,
     Callable,
@@ -16,6 +17,7 @@ from typing import (
     Self,
     Set,
     TypeVar,
+    Union,
     get_args,
     get_origin,
     get_type_hints,
@@ -23,44 +25,50 @@ from typing import (
 )
 from uuid import UUID
 
-from stepping import graph, steppingpack
+import steppingpack
+
+from stepping import graph
 
 
 # fmt: off
 class MatchAll:
     def __repr__(self) -> str: return "<MATCH_ALL>"
 MATCH_ALL = MatchAll()
-class Empty:
-    def __repr__(self) -> str: return "<EMPTY>"
+class Empty(steppingpack.Data):
+    _: A[str, 1] = "__empty__"
 EMPTY = Empty()
+IDENTITYLESS = (int, float, str, bool, UUID, date, datetime)
+ValueJSON = str | int | float | bool | None | list["ValueJSON"]
 IndexableAtom = steppingpack.Atom
-Indexable = steppingpack.ValueIndexable
+Indexable = steppingpack.Value  # REVISIT
 Serializable = steppingpack.Value
 
 class Addable(Protocol):
-    def __add__(self: T, other: T) -> T: ...
+    def __add__(self: TAny, other: TAny) -> TAny: ...
 class Negable(Protocol):
-    def __neg__(self: T) -> T: ...
+    def __neg__(self: TAny) -> TAny: ...
 class AddAndNegable(Protocol):
-    def __add__(self: T, other: T) -> T: ...
-    def __neg__(self: T) -> T: ...
+    def __add__(self: TAny, other: TAny) -> TAny: ...
+    def __neg__(self: TAny) -> TAny: ...
 class Reducable(Protocol):
     def __init__(self) -> None: ...
-    def __add__(self: T, other: T, /) -> T: ...    # including where other is -ve
-    def __mul__(self: T, other: int, /) -> T: ...  # including where other is -ve
+    def __add__(self: TAny, other: TAny, /) -> TAny: ...    # including where other is -ve
+    def __mul__(self: TAny, other: int, /) -> TAny: ...  # including where other is -ve
 
-T = TypeVar("T")
-U = TypeVar("U")
-V = TypeVar("V")
+TAny = TypeVar("TAny")
+T = TypeVar("T", bound=steppingpack.Value)
+U = TypeVar("U", bound=steppingpack.Value)
+V = TypeVar("V", bound=steppingpack.Value)
 X = TypeVar("X")
 Y = TypeVar("Y")
 Z = TypeVar("Z")
-K = TypeVar("K", bound=Indexable)
+K = TypeVar("K", bound=steppingpack.Value)
 T_co = TypeVar("T_co", covariant=True)
 K_co = TypeVar("K_co", bound=Indexable, covariant=True)
 KAtom = TypeVar("KAtom", bound=IndexableAtom)
-KTuple = TypeVar("KTuple", bound=tuple[IndexableAtom])
+KTuple = TypeVar("KTuple", bound=tuple[IndexableAtom, ...])
 TIndexable = TypeVar("TIndexable", bound=Indexable)
+# REVISIT
 TSerializable = TypeVar("TSerializable", bound=Serializable)
 VSerializable = TypeVar("VSerializable", bound=Serializable)
 TAddable = TypeVar("TAddable", bound=Addable)
@@ -73,13 +81,15 @@ Number = TypeVar("Number", int, float)
 
 class ZSet(Protocol[T]):
     @property
+    def t(self) -> type[T]: ...
+    @property
     def indexes(self) -> tuple[Index[T, Indexable], ...]: ...
     def __neg__(self) -> Self: ...
     def __add__(self, other: ZSet[T]) -> Self: ...
-    def iter(self, match: frozenset[T] | MatchAll = MATCH_ALL) -> Iterator[tuple[T, int]]: ...
+    def iter(self, match: tuple[T, ...] | MatchAll = MATCH_ALL) -> Iterator[tuple[T, int]]: ...
     # This should be: (See bottom of file).
     # def iter_by_index(
-    #     self, index: Index[T, K], match_keys: frozenset[K] | MatchAll = MATCH_ALL
+    #     self, index: Index[T, K], match_keys: tuple[K, ...] | MatchAll = MATCH_ALL
     # ) -> Iterator[tuple[K, T, int]]: ...
     iter_by_index: _IterByIndex[T]
 
@@ -100,22 +110,10 @@ class TransformerBuilder(Protocol):
 # fmt: on
 
 
-@dataclass(frozen=True)
-class Pair(Generic[T, U]):
-    left: T
-    right: U
-
-    # steppingpack helpers
-
-    st_arity: ClassVar[steppingpack.Arity] = steppingpack.Arity.BINARY
-
-    @property
-    def st_astuple(self) -> tuple[T, U]:
-        return self.left, self.right
-
-
 @dataclass
 class Grouped(Generic[T, K]):
+    t: type[T]
+    k: type[K]
     _data: dict[K, T] = field(default_factory=dict)
 
     def set(self, k: K, v: T) -> None:
@@ -293,7 +291,8 @@ def get_annotation_grouped(t: type[Grouped[T, K]]) -> type[T]:
 
 
 def get_annotation_grouped_zset(
-    t: type[Grouped[ZSet[T], K]]
+    # REVISIT
+    t: type[Grouped[ZSet[T], K]]  # type: ignore
 ) -> tuple[type[T], type[K]]:
     assert is_type(t, Grouped)
     zt, k = get_args(t)
@@ -326,6 +325,24 @@ def _get_generic_args(t: type) -> tuple[type, ...]:
     return get_args(parent_class_generic)
 
 
+def _strip_most_annotations(t: type) -> type:
+    origin = get_origin(t)
+    args = get_args(t)
+    if origin is None:
+        return t
+    if origin is A:
+        # handle steppingpack.AwareUTCDatetime|NaiveDatetime
+        if "aware" in args:
+            return A[args[0], "aware"]
+        if "naive" in args:
+            return A[args[0], "naive"]
+        return _strip_most_annotations(args[0])
+
+    if origin is UnionType:
+        origin = Union
+    return origin[*[_strip_most_annotations(a) for a in args]]
+
+
 def _name_type_map_from_dataclass(t: type) -> dict[str, type]:
     """Inspect a dataclass and return a map of field name to type.
 
@@ -333,9 +350,11 @@ def _name_type_map_from_dataclass(t: type) -> dict[str, type]:
 
     """
     original_t = get_origin(t) or t
-    name_type_map = get_type_hints(original_t)
+    name_type_map = get_type_hints(original_t, include_extras=True)
     name_type_map = {
-        k: v for k, v in name_type_map.items() if not get_origin(v) is ClassVar
+        k: _strip_most_annotations(v)
+        for k, v in name_type_map.items()
+        if not get_origin(v) is ClassVar
     }
     if t != original_t:
         generic_args = _get_generic_args(original_t)
@@ -379,6 +398,6 @@ class ZSetBodge(Generic[T], metaclass=ZSetBodgeMeta):
 
 class _IterByIndex(Protocol[T]):
     def __call__(
-        self, index: Index[T, K], match_keys: frozenset[K] | MatchAll = MATCH_ALL
+        self, index: Index[T, K], match_keys: tuple[K, ...] | MatchAll = MATCH_ALL
     ) -> Iterator[tuple[K, T, int]]:
         ...

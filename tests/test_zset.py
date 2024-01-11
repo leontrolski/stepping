@@ -1,83 +1,100 @@
-from dataclasses import dataclass
+from typing import Annotated as A
+from typing import TypeVar
 
-from stepping.types import Index, Pair, Reducable, T, ZSet
+# REVISIT
+import steppingpack
+
+from stepping.types import Index, Reducable, ZSet
 from stepping.zset import functions
 from stepping.zset.python import ZSetPython
 
+T = TypeVar("T", bound=steppingpack.Value)
+
 
 def test_typing() -> None:
-    bar: ZSet[int] = ZSetPython[int]()
-    qux: Reducable = ZSetPython[int]()
+    bar: ZSet[int] = ZSetPython(int)
+    qux: Reducable = ZSetPython(int)  # type: ignore[arg-type]
 
 
-@dataclass(frozen=True)
-class Left:
-    kind: str
-    name: str
-    sound_id: int
+class Left(steppingpack.Data):
+    kind: A[str, 1]
+    name: A[str, 2]
+    sound_id: A[int, 3]
 
 
-@dataclass(frozen=True)
-class Right:
-    sound_id: int
-    sound: str
+class Right(steppingpack.Data):
+    sound_id: A[int, 1]
+    sound: A[str, 2]
 
 
 left_table = [
-    Left("cat", "felix", 1),
-    Left("cat", "felix", 1),
-    Left("dog", "fido", 2),
-    Left("dog", "rex", 2),
-    Left("ant", "teeny", 3),
-    Left("cow", "spot", 4),
+    Left(kind="cat", name="felix", sound_id=1),
+    Left(kind="cat", name="felix", sound_id=1),
+    Left(kind="dog", name="fido", sound_id=2),
+    Left(kind="dog", name="rex", sound_id=2),
+    Left(kind="ant", name="teeny", sound_id=3),
+    Left(kind="cow", name="spot", sound_id=4),
 ]
 
 right_table = [
-    Right(1, "meow"),
-    Right(2, "woof"),
-    Right(4, "moo"),
+    Right(sound_id=1, sound="meow"),
+    Right(sound_id=2, sound="woof"),
+    Right(sound_id=4, sound="moo"),
 ]
 
 
-def to_zset(table: list[T]) -> ZSet[T]:
-    zset = ZSetPython[T]()
+def to_zset(t: type[T], table: list[T]) -> ZSet[T]:
+    zset = ZSetPython[T](t)
     for row in table:
-        zset += ZSetPython({row: 1})
+        zset += ZSetPython(t, [(row, 1)])
     return zset
 
 
 def test_index() -> None:
     ix = Index.identity(int)
-    zset = ZSetPython[int](indexes=(ix,))
-    zset += ZSetPython({3: 2})
+    zset = ZSetPython[int](int, indexes=(ix,))
+    zset += ZSetPython(int, [(3, 2)])
 
 
 def test_join() -> None:
     actual = functions.join(
-        to_zset(left_table),
-        to_zset(right_table),
+        to_zset(Left, left_table),
+        to_zset(Right, right_table),
         on_left=Index.pick(Left, lambda l: l.sound_id),
         on_right=Index.pick(Right, lambda r: r.sound_id),
     )
     expected = ZSetPython(
-        {
-            Pair(
-                left=Left(kind="cow", name="spot", sound_id=4),
-                right=Right(sound_id=4, sound="moo"),
-            ): 1,
-            Pair(
-                left=Left(kind="cat", name="felix", sound_id=1),
-                right=Right(sound_id=1, sound="meow"),
-            ): 2,
-            Pair(
-                left=Left(kind="dog", name="fido", sound_id=2),
-                right=Right(sound_id=2, sound="woof"),
-            ): 1,
-            Pair(
-                left=Left(kind="dog", name="rex", sound_id=2),
-                right=Right(sound_id=2, sound="woof"),
-            ): 1,
-        },
+        tuple[Left, Right],  # type: ignore[type-var]
+        [
+            (
+                (
+                    Left(kind="cow", name="spot", sound_id=4),
+                    Right(sound_id=4, sound="moo"),
+                ),
+                1,
+            ),
+            (
+                (
+                    Left(kind="cat", name="felix", sound_id=1),
+                    Right(sound_id=1, sound="meow"),
+                ),
+                2,
+            ),
+            (
+                (
+                    Left(kind="dog", name="fido", sound_id=2),
+                    Right(sound_id=2, sound="woof"),
+                ),
+                1,
+            ),
+            (
+                (
+                    Left(kind="dog", name="rex", sound_id=2),
+                    Right(sound_id=2, sound="woof"),
+                ),
+                1,
+            ),
+        ],
     )
     assert actual == expected
 

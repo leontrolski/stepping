@@ -1,19 +1,20 @@
 from pathlib import Path
 from textwrap import dedent
 import stepping as st
+from typing import Annotated as A
 
 IMAGES = (Path(__file__).parents[2] / "docs/doks/assets/images").resolve()
 assert IMAGES.exists()
 
 
 class A(st.Data):
-    x: int
-    name: str
+    x: A[int, 1]
+    name: A[str, 2]
 
 
 class B(st.Data):
-    y: int
-    name: str
+    y: A[int, 1]
+    name: A[str, 2]
 
 
 def test_a() -> None:
@@ -45,7 +46,7 @@ def _upper(a: A) -> A:
 from stepping.operators import linear
 
 
-def query_graph(a: st.ZSet[A], b: st.ZSet[B]) -> st.ZSet[st.Pair[A, B]]:
+def query_graph(a: st.ZSet[A], b: st.ZSet[B]) -> st.ZSet[tuple[A, B]]:
     a_uppered = st.map(a, f=_upper)
     joined = linear.join(
         a_uppered,
@@ -100,7 +101,7 @@ def test_e() -> None:
     assert output == st.ZSetPython({"a": 4})
 
 
-def query_dumb(a: st.ZSet[A], b: st.ZSet[B]) -> st.ZSet[st.Pair[A, B]]:
+def query_dumb(a: st.ZSet[A], b: st.ZSet[B]) -> st.ZSet[tuple[A, B]]:
     a_integrated = st.integrate(a)
     b_integrated = st.integrate(b)
     joined = linear.join(
@@ -194,7 +195,7 @@ def _pick_zset(n: str) -> st.ZSetPython[str]:
     return st.ZSetPython({n: 1})
 
 
-def sum_by_length(a: st.ZSet[str]) -> st.ZSet[st.Pair[st.ZSetPython[str], int]]:
+def sum_by_length(a: st.ZSet[str]) -> st.ZSet[tuple[st.ZSetPython[str], int]]:
     grouped = st.group_reduce_flatten(
         a,
         by=st.Index.atom("length", str, int, lambda n: len(n)),

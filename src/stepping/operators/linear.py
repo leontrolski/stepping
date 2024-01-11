@@ -1,12 +1,10 @@
-from typing import Callable
+from typing import Any, Callable, get_args
 
 from stepping.graph import OperatorKind
 from stepping.operators import builder
 from stepping.types import (
     Index,
-    Indexable,
     K,
-    Pair,
     T,
     TAddable,
     TAddAndNegable,
@@ -32,7 +30,8 @@ def delay(a: T) -> T:
 
 
 @builder.vertex(OperatorKind.delay)
-def delay_indexed(a: ZSet[T], *, indexes: tuple[Index[T, Indexable], ...]) -> ZSet[T]:
+# REVISIT Any
+def delay_indexed(a: ZSet[T], *, indexes: tuple[Index[T, Any], ...]) -> ZSet[T]:
     raise RuntimeError("delay should never get called, it is special")
 
 
@@ -60,9 +59,7 @@ def integrate(a: TAddable) -> TAddable:
     return added
 
 
-def integrate_indexed(
-    a: ZSet[T], *, indexes: tuple[Index[T, Indexable], ...]
-) -> ZSet[T]:
+def integrate_indexed(a: ZSet[T], *, indexes: tuple[Index[T, Any], ...]) -> ZSet[T]:
     delayed: ZSet[T]
     added = add(delayed, a)
     delayed = delay_indexed(added, indexes=indexes)
@@ -77,7 +74,7 @@ def integrate_delay(a: TAddable) -> TAddable:
 
 
 def integrate_delay_indexed(
-    a: ZSet[T], *, indexes: tuple[Index[T, Indexable], ...]
+    a: ZSet[T], *, indexes: tuple[Index[T, Any], ...]
 ) -> ZSet[T]:
     delayed: ZSet[T]
     added = add(delayed, a)
@@ -93,13 +90,21 @@ def differentiate(a: TAddAndNegable) -> TAddAndNegable:
     return added
 
 
-@builder.vertex(OperatorKind.map)
 def map(a: ZSet[T], *, f: Callable[[T], V]) -> ZSet[V]:
-    return functions.map(a, f)
+    with builder.at_compile_time:
+        v: type[V] = get_args(builder.compile_typeof(f))[1]
+
+    mapped = _map(a, v=v, f=f)
+    return mapped
+
+
+@builder.vertex(OperatorKind.map)
+def _map(a: ZSet[T], *, v: type[V], f: Callable[[T], V]) -> ZSet[V]:
+    return functions.map(v, a, f)
 
 
 @builder.vertex(OperatorKind.map_many)
-def map_many(a: ZSet[T], *, f: Callable[[T], frozenset[V]]) -> ZSet[V]:
+def map_many(a: ZSet[T], *, f: Callable[[T], tuple[V, ...]]) -> ZSet[V]:
     return functions.map_many(a, f)
 
 
@@ -114,8 +119,8 @@ def reduce(a: ZSet[T], *, f: Callable[[ZSet[T]], V]) -> V:
 
 
 @builder.vertex(OperatorKind.make_set)
-def make_set(a: T) -> ZSet[T]:
-    return ZSetPython({a: 1})
+def make_set(a: T, *, t: type[T]) -> ZSet[T]:
+    return ZSetPython(t, [(a, 1)])
 
 
 @builder.vertex(OperatorKind.make_scalar)
@@ -138,7 +143,7 @@ def haitch(a: ZSet[T], b: ZSet[T]) -> ZSet[T]:
 @builder.vertex(OperatorKind.join)
 def join(
     l: ZSet[T], r: ZSet[U], *, on_left: Index[T, K], on_right: Index[U, K]
-) -> ZSet[Pair[T, U]]:
+) -> ZSet[tuple[T, U]]:
     return functions.join(l, r, on_left, on_right)
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from unittest.mock import ANY
 
-from stepping import types
+from stepping import AwareUTCDatetime, types
 
 
 @dataclass
@@ -75,16 +75,21 @@ def test_pick_5() -> None:
 
 
 def test_pick_6() -> None:
-    actual = types.Index.pick(types.Pair[Cat, tuple[int]], lambda p: (p.right[0],))
-    expected = types.Index[types.Pair[Cat, tuple[int]], tuple[int]](
-        ("right.0",), (True,), ANY, types.Pair[Cat, tuple[int]], tuple[int], True  # type: ignore
+    actual = types.Index.pick(tuple[Cat, tuple[int]], lambda p: (p[1][0],))
+    expected = types.Index[tuple[Cat, tuple[int]], tuple[int]](
+        ("1.0",), (True,), ANY, tuple[Cat, tuple[int]], tuple[int], True  # type: ignore
     )
     assert actual == expected
 
 
 def test_pick_7() -> None:
-    actual = types.Index.pick(types.Pair[int, tuple[str, float]], lambda p: p.right)
-    expected = types.Index[types.Pair[int, tuple[str, float]], tuple[str, float]](
-        ("right.0", "right.1"), (True, True), ANY, types.Pair[int, tuple[str, float]], tuple[str, float], True  # type: ignore
+    actual = types.Index.pick(tuple[int, tuple[str, float]], lambda p: p[1])
+    expected = types.Index[tuple[int, tuple[str, float]], tuple[str, float]](
+        ("1.0", "1.1"), (True, True), ANY, tuple[int, tuple[str, float]], tuple[str, float], True  # type: ignore
     )
     assert actual == expected
+
+
+def test_pick_8() -> None:
+    actual = types.Index.pick(AwareUTCDatetime, lambda x: x)
+    assert actual.k == AwareUTCDatetime

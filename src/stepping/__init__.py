@@ -28,6 +28,12 @@ from stepping.operators.lifted import (  # isort:skip
 from stepping.operators import builder, transform  # isort:skip
 from stepping.operators.builder import traverse  # isort:skip
 
+from steppingpack import AwareUTCDatetime as AwareUTCDatetime
+from steppingpack import Data as Data
+from steppingpack import List as List
+from steppingpack import NaiveDatetime as NaiveDatetime
+from steppingpack import OrderedDict as OrderedDict
+
 from stepping.graph import Graph as Graph
 from stepping.graph import write_png as write_png
 from stepping.operators.builder import at_compile_time as at_compile_time
@@ -54,14 +60,12 @@ from stepping.operators.transform import Cache as Cache
 from stepping.operators.transform import per_group as per_group
 from stepping.run import actions as actions
 from stepping.run import iteration as iteration
-from stepping.steppingpack import Data as Data
 from stepping.store import StorePostgres as StorePostgres
 from stepping.store import StorePython as StorePython
 from stepping.store import StoreSQL as StoreSQL
 from stepping.store import StoreSQLite as StoreSQLite
 from stepping.types import Empty as Empty
 from stepping.types import Index as Index
-from stepping.types import Pair as Pair
 from stepping.types import Store as Store
 from stepping.types import Time as Time
 from stepping.types import ZSet as ZSet
